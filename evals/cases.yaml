@@ -1,0 +1,38 @@
+cases:
+  - id: eval_01
+    query: "What is my allocation to the banking sector?"
+    expected_type: allocation
+    expected_facts:
+      - HDFCBANK
+      - ICICIBANK
+      - SBI
+
+  - id: eval_02
+    query: "What is my total unrealized profit and loss?"
+    expected_type: metrics
+    expected_facts:
+      - unrealized
+      - P&L
+
+  - id: eval_03
+    query: "How does the RBI keeping interest rates unchanged affect my portfolio?"
+    expected_type: news_impact
+    expected_facts:
+      - HDFCBANK
+      - SBI
+      - ICICIBANK
+
+  - id: eval_04
+    query: "What is the impact of IT sector headwinds on my holdings?"
+    expected_type: news_impact
+    expected_facts:
+      - TCS
+      - INFY
+      - WIPRO
+
+  - id: eval_05
+    query: "What percentage of my portfolio is invested in mutual funds?"
+    expected_type: allocation
+    expected_facts:
+      - mutual_fund
+      - HDFCMIDCAP
