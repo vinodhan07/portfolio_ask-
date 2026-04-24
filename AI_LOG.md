@@ -1,22 +1,28 @@
 # AI Log: portfolio-ask
 
 ## Overview
-**Project:** AI-powered portfolio Q&A CLI with RAG + 4-node agentic pipeline
+**Project:** AI-powered portfolio Q&A CLI with RAG + LangChain ReAct Agent
 **Model Stack:**
-- Query classification & allocation/metrics RAG: `gemini-2.0-flash`
-- News impact analysis (Node 4): `gemini-1.5-pro`
+- Agent reasoning and tool usage: `gemini-2.5-flash`
+- News impact analysis (deep reasoning): `gemini-1.5-pro`
 - Embeddings: `sentence-transformers/all-MiniLM-L6-v2` (FAISS)
 
 **Key Architecture:**
 ```
-Query → Router → allocation   → RAG → AllocationResponse
-               → metrics     → RAG → MetricsResponse
-               → news_impact → 4-Node Agent → NewsImpactResponse
-                                 Node 1: FAISS news search
-                                 Node 2: Cross-reference to tickers
-                                 Node 3: Rank by portfolio exposure
-                                 Node 4: Gemini Pro typed JSON
+User Query → LangChain ReAct Agent → Chooses one of four tools:
+                                 - allocation_tool
+                                 - metrics_tool
+                                 - general_qa_tool
+                                 - news_impact_tool
 ```
+
+---
+
+## Recent Updates (2026-04-24)
+
+- **Switched to LangChain ReAct Agent:** We removed LangGraph completely. Now, the query routing is handled by a simpler LangChain ReAct Agent using `create_react_agent` and `AgentExecutor`. The four main tasks (allocation, metrics, general QA, and news impact) are just simple LangChain tools.
+- **Cleaned up agent.py:** Removed all the long, robotic docstrings and decorative separator lines to make the code look like it was written by a real human developer.
+- **Fixed Model Bugs:** Fixed a small bug where the `Holding` model expected `company` instead of `name` to match `portfolio.json`. We also added the missing `from_list` function to the `Portfolio` class so it can load our data properly.
 
 ---
 
@@ -123,7 +129,7 @@ byld-portfolio-ask/
 │   ├── __main__.py                Interactive REPL + one-shot CLI
 │   ├── models.py                  Pydantic schemas (Holding, Portfolio, Responses)
 │   ├── retriever.py               FAISS VectorStore, chunking, caching
-│   ├── agent.py                   QueryRouter, 4-node pipeline (Variant C)
+│   ├── agent.py                   QueryRouter and LangChain ReAct Agent
 │   └── prompts.py                 System prompts for Gemini
 │
 ├── evals/

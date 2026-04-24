@@ -1,5 +1,5 @@
 .env
-.vector_cache/
+.faiss_store/
 __pycache__/
 *.pyc
 *.pyo
