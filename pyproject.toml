@@ -9,7 +9,7 @@ description = "AI-powered portfolio Q&A CLI — RAG + multi-step agent over Indi
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.40.0",
+    "google-genai>=0.2.0",
     "sentence-transformers>=3.0.0",
     "faiss-cpu>=1.8.0",
     "pydantic>=2.0.0",
