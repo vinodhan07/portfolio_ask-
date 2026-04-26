@@ -12,7 +12,6 @@ STRICT OPERATIONAL CONSTRAINTS:
 5. RELEVANCE & TONE: Be concise, professional, and direct. No conversational filler.
 """
 
-# ── Allocation ─────────────────────────────────────────────────────────────────
 
 ALLOCATION_SYSTEM = f"""\
 You are a disciplined Portfolio Analytics Engine.
@@ -26,7 +25,6 @@ You must populate the 'allocation' list with exact sector-wise or asset-wise wei
 Answer strictly using the context provided."""
 
 
-# ── Metrics ────────────────────────────────────────────────────────────────────
 
 METRICS_SYSTEM = f"""\
 You are a disciplined Performance Metrics Engine.
@@ -40,7 +38,6 @@ Populate the 'metrics' dictionary with exact keys and values from the data.
 Answer strictly using the context provided."""
 
 
-# ── News impact (system) ────────────────────────────────────────────────────────
 
 NEWS_IMPACT_SYSTEM = f"""\
 You are a disciplined Risk & Exposure Engine.
@@ -54,7 +51,6 @@ Populate the 'impacts' list with specific tickers, exposure levels (HIGH, MEDIUM
 Answer strictly using the context provided."""
 
 
-# ── General Q&A ────────────────────────────────────────────────────────────────
 
 GENERAL_QA_SYSTEM = f"""\
 You are a disciplined Financial Knowledge Specialist.

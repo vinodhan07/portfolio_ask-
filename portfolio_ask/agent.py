@@ -94,7 +94,6 @@ def answer_allocation(
         {"role": "user", "content": user}
     ])
     
-    # Merge retrieved sources
     result.sources = list(set(result.sources) | set(sources))
     return result
 
@@ -379,7 +378,7 @@ Thought:{agent_scratchpad}'''
         )
         self.current_history = None
 
-        # Map tool names → response model classes
+       
         self._tool_response_map: dict[str, type] = {
             "allocation_tool": AllocationResponse,
             "metrics_tool": MetricsResponse,

@@ -56,18 +56,25 @@ _LABELS = {
     "general_qa": "GENERAL Q&A",
 }
 
-# Clean Gemini-style Header
-_BANNER_TEXT = "[bold blue]PORTFOLIO ASK[/bold blue] [dim]|[/dim] [white]Indian Equity Intelligence[/white]"
+# Gemini-tone ASCII Logo
+_BANNER_LOGO = r"""
+[bold #38BDF8] ██████╗  ██████╗ ██████╗ ████████╗ [/bold #38BDF8] [bold #60A5FA] █████╗  ██████╗ ███████╗███╗   ██╗████████╗ [/bold #60A5FA]
+[bold #38BDF8] ██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝ [/bold #38BDF8] [bold #60A5FA]██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝ [/bold #60A5FA]
+[bold #60A5FA] ██████╔╝██║   ██║██████╔╝   ██║    [/bold #60A5FA] [bold #818CF8]███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║    [/bold #818CF8]
+[bold #818CF8] ██╔═══╝ ██║   ██║██╔══██╗   ██║    [/bold #818CF8] [bold #A78BFA]██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║    [/bold #A78BFA]
+[bold #A78BFA] ██║     ╚██████╔╝██║  ██║   ██║    [/bold #A78BFA] [bold #C084FC]██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║    [/bold #C084FC]
+[bold #C084FC] ╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝    [/bold #C084FC] [bold #E879F9]╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝    [/bold #E879F9]
+"""
 
 # ── Header & Visuals ──────────────────────────────────────────────────────────
 
 def _print_banner(portfolio: Portfolio, store: VectorStore) -> None:
     console.clear()
-    console.print(f"\n{_BANNER_TEXT}\n")
+    console.print(_BANNER_LOGO)
     
     # Portfolio Metadata Panel
     console.print(Panel(
-        f" [bold white]Assets Managed:[/bold white] ₹{portfolio.total_value:,.0f} [dim]|[/dim] [bold white]Tracked Holdings:[/bold white] {len(portfolio.holdings)} [dim]|[/dim] [bold white]Knowledge Base:[/bold white] {store.total_docs} nodes",
+        f" [bold white]Assets Managed:[/bold white] ₹{portfolio.total_value:,.0f} [dim]|[/dim] [bold white]Tracked Holdings:[/bold white] {len(portfolio.holdings)}",
         border_style="blue",
         padding=(0, 2)
     ))
@@ -277,7 +284,7 @@ def _cmd_help() -> None:
         ("/rebuild",        "Force-rebuild the FAISS vector index from data/"),
         ("/clear,    /c",   "Clear screen and redraw the banner"),
         ("/json",           "Toggle raw JSON output mode (current session)"),
-        ("/quit,     /q",   "Exit portfolio-ask"),
+        ("/quit,     /q",   "Exit PORT AGENT"),
     ]
     for cmd, desc in rows:
         t.add_row(cmd, desc)
@@ -312,7 +319,7 @@ def _graceful_shutdown():
         ("[bold red]●[/bold red] Terminating active agent processes...", 0.4),
         ("[bold red]●[/bold red] Clearing session cache and memory...", 0.3),
         ("[bold red]●[/bold red] Disconnecting from vector store...", 0.3),
-        ("[bold blue]◆ System shutdown...[/bold blue] [blue]Portfolio-Ask[/blue] terminated. [green]✓[/green]\n", 0.1),
+        ("[bold blue]◆ System shutdown...[/bold blue] [blue]PORT AGENT[/blue] terminated. [green]✓[/green]\n", 0.1),
     ]
     console.print()
     for msg, delay in steps:
