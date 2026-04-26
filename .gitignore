@@ -1,11 +1,48 @@
+# Environment and Secrets
 .env
+GOOGLE_API_KEY
+HF_TOKEN
+
+# Application Data & Indices
 .faiss_store/
+portfolio.log
+
+# Python & Dependencies
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.toast
+.lucid
+.pytest_cache/
 *.egg-info/
+.installed.cfg
+*.egg
+
+# Build and Distribution
 dist/
 build/
-.venv/
-venv/
-.pytest_cache/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.spec
+
+# IDE & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project Scratch Files
+scratch/

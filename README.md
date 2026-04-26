@@ -4,6 +4,53 @@
 
 ---
 
+## 🧠 System Architecture
+
+```mermaid
+graph TD
+    subgraph "Data Layer"
+        P[portfolio.json]
+        N[data/news/*.md]
+    end
+
+    subgraph "Indexing Pipeline (retriever.py)"
+        N --> Chunk[Recursive Text Splitter]
+        Chunk --> Embed[SentenceTransformer]
+        Embed --> FAISS[(.faiss_store)]
+    end
+
+    subgraph "User Interface (main.py)"
+        User((User Query)) --> CLI[PORT AGENT CLI]
+    end
+
+    subgraph "Intelligence Engine (agent.py)"
+        CLI --> Router{Gemini 2.0 Router}
+        Router --> |Search| FAISS
+        Router --> |Analyze| Portfolio[Portfolio Context]
+        
+        subgraph "Specialized Tools"
+            T1[Allocation Tool]
+            T2[News Impact Tool]
+            T3[Metrics Tool]
+        end
+        
+        Router --> T1
+        Router --> T2
+        Router --> T3
+    end
+
+    subgraph "Output Generation"
+        T1 & T2 & T3 --> Report[Analysis Report]
+        Report --> Prose[Executive Summary]
+        Report --> Tables[Structured Data Tables]
+        Report --> Sources[Mandatory Citations]
+    end
+
+    Sources --> User
+```
+
+---
+
 ## 🚀 Key Features
 
 *   **Multi-Step Reasoning**: Powered by Gemini 2.0, the agent orchestrates multiple tools to answer complex queries about sector allocation, risk exposure, and performance metrics.
@@ -46,6 +93,7 @@ This agent is built with a "Safety First" architecture to ensure it can be used 
 ├── data/
 │   ├── portfolio.json      # Your equity holdings (Ground Truth)
 │   └── news/               # Market news documents (.md / .txt)
+├── docs/                   # System architecture and visual assets
 ├── AI_LOG.md               # Detailed development & negotiation log
 └── pyproject.toml          # Dependencies & project metadata
 ```
