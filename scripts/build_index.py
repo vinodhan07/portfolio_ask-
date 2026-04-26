@@ -1,14 +1,3 @@
-"""
-Build the FAISS vector index from data/.
-
-Reads data/ (portfolio.json, portfolio_augmented.json, glossary.md, news/*.md),
-embeds every document, and saves the FAISS index to .faiss_store/.
-
-Run once after adding or changing any data file:
-    python scripts/build_index.py
-    python scripts/build_index.py --data-dir path/to/data
-    python scripts/build_index.py --force
-"""
 from __future__ import annotations
 
 import argparse

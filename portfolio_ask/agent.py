@@ -419,7 +419,7 @@ Thought:{agent_scratchpad}'''
                             result.tools_used = used_tools
                         return result
                     except Exception:
-                        pass  # Fall through to default
+                        pass 
 
         except Exception as e:
             final_answer = f"Agent encountered an error: {e}"

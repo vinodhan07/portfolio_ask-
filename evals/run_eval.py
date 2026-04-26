@@ -59,13 +59,13 @@ def run() -> None:
         result = router.answer(query)
         result_json = result.model_dump_json()
 
-        # Check query type
+
         actual_type = type(result).__name__.lower().replace("response", "")
         type_map = {"allocation": "allocation", "metrics": "metrics", "newsimpact": "news_impact"}
         actual_label = type_map.get(actual_type, actual_type)
         type_ok = actual_label == expected_type
 
-        # Check facts
+
         hits, misses = _check(result_json, expected_facts)
         facts_ok = len(misses) == 0
         ok = type_ok and facts_ok
@@ -87,7 +87,6 @@ def run() -> None:
             status,
         )
 
-        # Print reasoning trace
         console.print(f"  Result type : {actual_label}")
         if isinstance(result, NewsImpactResponse):
             console.print(f"  Impacts     : {[i.ticker for i in result.impacts]}")

@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 import typer
+from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,7 +28,7 @@ from rich.live import Live
 from rich.spinner import Spinner
 from langchain_core.callbacks import BaseCallbackHandler
 
-# Assumes these exist in your project
+
 from .agent import QueryRouter
 from .models import AllocationResponse, GeneralQaResponse, MetricsResponse, NewsImpactResponse, Portfolio
 from .retriever import VectorStore, build_store
@@ -35,14 +36,13 @@ from .logger import setup_logger, logger
 
 setup_logger()
 
-# Initialize Typer and Rich
 app = typer.Typer(help="AI-powered portfolio intelligence CLI", rich_markup_mode="rich")
 console = Console()
 
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _VERSION = "0.1.0"
 
-# --- GLOBAL STYLING DICTIONARIES ---
+
 _COLORS = {
     "allocation": "cyan",
     "metrics": "green",
@@ -72,7 +72,6 @@ def _print_banner(portfolio: Portfolio, store: VectorStore) -> None:
     console.clear()
     console.print(_BANNER_LOGO)
     
-    # Portfolio Metadata Panel
     console.print(Panel(
         f" [bold white]Assets Managed:[/bold white] ₹{portfolio.total_value:,.0f} [dim]|[/dim] [bold white]Tracked Holdings:[/bold white] {len(portfolio.holdings)}",
         border_style="blue",
@@ -87,7 +86,6 @@ def _print_banner(portfolio: Portfolio, store: VectorStore) -> None:
     console.print(Rule(style="dim blue"))
     console.print()
     
-    # Dynamic Suggestions based on actual holdings
     holdings = [h.ticker.split('.')[0] for h in portfolio.holdings]
     sectors = list(set(h.sector for h in portfolio.holdings))
     
@@ -124,8 +122,6 @@ def _get_user_input() -> str:
     console.print(info_panel)
     return Prompt.ask("\n[bold blue]>[/bold blue] ")
 
-
-# ── Renderers ─────────────────────────────────────────────────────────────────
 
 def _get_rtype(result) -> str:
     if isinstance(result, AllocationResponse): return "allocation"
@@ -236,11 +232,9 @@ def _route_and_render(result: Any, json_mode: bool):
         console.print(Syntax(result.model_dump_json(indent=2), "json", theme="monokai"))
         return
 
-    # 1. Report Header
     console.print(Rule(style="bold blue"))
     console.print(f" [bold blue]◆ Analysis Report[/bold blue] [dim]· {datetime.now().strftime('%H:%M:%S')}[/dim]\n")
 
-    # 2. Expert Narrative (Prose Answer)
     answer_text = getattr(result, "answer", getattr(result, "summary", ""))
     if answer_text:
         console.print(
@@ -255,7 +249,6 @@ def _route_and_render(result: Any, json_mode: bool):
         )
         console.print("")
 
-    # 3. Structured Data Panels
     rtype = _get_rtype(result)
     if rtype == "allocation": 
         _render_allocation_table(result)
@@ -264,16 +257,12 @@ def _route_and_render(result: Any, json_mode: bool):
     elif rtype == "metrics": 
         _render_metrics_table(result)
     
-    # 4. Report Footer (Sources & End of Report)
     if hasattr(result, "sources") and result.sources:
         sources_str = ", ".join(result.sources)
         console.print(f"  [dim italic]Sources: {sources_str}[/dim italic]")
     
     console.print(Rule(style="dim blue"))
     console.print("")
-
-
-# ── Slash commands ────────────────────────────────────────────────────────────
 
 def _cmd_help() -> None:
     t = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
@@ -354,15 +343,12 @@ def _handle_slash_command(cmd: str, portfolio: Portfolio, store: VectorStore, ro
     return json_mode
 
 
-# ── Typer Application ─────────────────────────────────────────────────────────
-
 @app.command()
 def main(
     query: str = typer.Argument(None, help="Run a single query non-interactively."),
     json_mode_opt: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
     rebuild: bool = typer.Option(False, "--rebuild", help="Force-rebuild vector index"),
 ):
-    # --- 1. Startup & Loading ---
     if not (_DATA_DIR / "portfolio.json").exists():
         console.print("[red]Error:[/red] data/portfolio.json not found.")
         sys.exit(1)
@@ -377,7 +363,6 @@ def main(
         console.print(f"[green]✓[/green] Index rebuilt  ·  {store.total_docs} documents")
         return
 
-    # --- 2. Single-shot Mode ---
     if query:
         logger.info(f"Single-shot Query: {query}")
         console.print(f"\n[dim]Query:[/dim] {query}\n")
@@ -389,7 +374,6 @@ def main(
         _route_and_render(result, json_mode_opt)
         return
 
-    # --- 3. Interactive REPL Mode ---
     _print_banner(portfolio, store)
     json_mode = json_mode_opt
 

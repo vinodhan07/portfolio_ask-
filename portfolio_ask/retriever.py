@@ -21,7 +21,7 @@ try:
     if hasattr(huggingface_hub, "logging") and hasattr(huggingface_hub.logging, "disable_progress_bar"):
         huggingface_hub.logging.disable_progress_bar()
 
-    # Disable tqdm globally to silence weight loading logs
+    
     from tqdm import tqdm
     from functools import partialmethod
     tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
@@ -53,11 +53,10 @@ class VectorStore:
     def add_documents(self, texts: list[str], metadata: Optional[list[dict]] = None) -> None:
         if not texts:
             return
-        # Generate embeddings (Bi-Encoder approach)
+        
         embeddings = self.model.encode(texts).astype("float32")
 
         if self.index is None:
-            # Use IndexFlatL2 for simplicity (Euclidean distance)
             dim = embeddings.shape[1]
             self.index = faiss.IndexFlatL2(dim)
 
@@ -69,7 +68,6 @@ class VectorStore:
         if not self.index:
             return []
 
-        # Encode query and search the vector index
         query_vector = self.model.encode([query]).astype("float32")
         distances, indices = self.index.search(query_vector, top_k)
 
@@ -104,7 +102,6 @@ class VectorStore:
         return self.index.ntotal if self.index else 0
 
 
-# ── Chunking helpers ──────────────────────────────────────────────────────────
 
 def _chunk_portfolio(portfolio_path: Path) -> tuple[list[str], list[dict]]:
     """Chunks the portfolio.json (a JSON array of holdings)."""
@@ -127,7 +124,7 @@ def _chunk_portfolio(portfolio_path: Path) -> tuple[list[str], list[dict]]:
         texts.append(text)
         meta.append({"source": "portfolio.json", "ticker": h["ticker"], "type": "holding"})
 
-        # Also chunk embedded news items from portfolio.json
+        
         for news_item in h.get("news", []):
             news_text = (
                 f"[{news_item['date']}] {news_item['title']}\n"
