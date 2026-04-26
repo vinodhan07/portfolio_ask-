@@ -1,0 +1,6 @@
+20:22:43 | INFO     | portfolio_ask | User Query: test
+20:22:44 | INFO     | portfolio_ask | Tool Call: general_qa_tool | Query: test
+20:22:45 | INFO     | portfolio_ask | Tool Call: allocation_tool | Query: test
+20:22:47 | INFO     | portfolio_ask | Tool Call: metrics_tool | Query: test
+20:23:33 | INFO     | portfolio_ask | User Query: How does the latest RBI rate decision affect my portfolio?
+20:23:34 | INFO     | portfolio_ask | Tool Call: news_impact_tool | Query: How does the latest RBI rate decision affect my portfolio holdings?

@@ -6,16 +6,15 @@ from typing import Literal
 
 class Holding(BaseModel):
     ticker: str
-    company: str
-    type: Literal["equity", "mutual_fund", "bond"]
+    name: str
+    asset_type: Literal["equity", "mutual_fund", "bond"]
     sector: str
     quantity: float
     avg_buy_price: float
     current_price: float
-    current_value: float
+    holding_value: float
     weight_pct: float
-    unrealized_pnl: float
-    unrealized_pnl_pct: float
+    pnl_pct: float
 
 
 class Portfolio(BaseModel):
@@ -25,6 +24,34 @@ class Portfolio(BaseModel):
     as_of_date: str
     total_value: float
     holdings: list[Holding]
+
+    @classmethod
+    def from_list(cls, data: list[dict]) -> "Portfolio":
+        total_val = sum(item.get("holding_value", 0.0) for item in data)
+        holdings = []
+        for item in data:
+            holdings.append(
+                Holding(
+                    ticker=item["ticker"],
+                    name=item["name"],
+                    asset_type=item["asset_type"],
+                    sector=item["sector"],
+                    quantity=item["quantity"],
+                    avg_buy_price=item["avg_cost"],
+                    current_price=item["current_price"],
+                    holding_value=item["holding_value"],
+                    weight_pct=(item["holding_value"] / total_val * 100) if total_val else 0.0,
+                    pnl_pct=item["pnl_pct"],
+                )
+            )
+        return cls(
+            portfolio_id="default",
+            owner="User",
+            currency="INR",
+            as_of_date="2026-04-24",
+            total_value=total_val,
+            holdings=holdings,
+        )
 
 
 class NewsImpactItem(BaseModel):
@@ -56,6 +83,9 @@ class MetricsResponse(BaseModel):
     sources: list[str]
 
 
-class QueryClassification(BaseModel):
-    query_type: Literal["allocation", "metrics", "news_impact"]
-    reasoning: str
+
+class GeneralQaResponse(BaseModel):
+    query: str
+    answer: str
+    sources: list[str]
+

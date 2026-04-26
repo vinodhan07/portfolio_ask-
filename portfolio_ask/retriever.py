@@ -9,20 +9,41 @@ import numpy as np
 
 try:
     import faiss
+    import os
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    
+    import transformers
+    transformers.logging.set_verbosity_error()
+    if hasattr(transformers.utils.logging, "disable_progress_bar"):
+        transformers.utils.logging.disable_progress_bar()
+        
+    import huggingface_hub
+    if hasattr(huggingface_hub, "logging") and hasattr(huggingface_hub.logging, "disable_progress_bar"):
+        huggingface_hub.logging.disable_progress_bar()
+
+    # Disable tqdm globally to silence weight loading logs
+    from tqdm import tqdm
+    from functools import partialmethod
+    tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+    
     from sentence_transformers import SentenceTransformer
     _HAS_DEPS = True
-except ImportError:
+except ImportError as e:
+    _IMPORT_ERROR = str(e)
     _HAS_DEPS = False
 
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-_CACHE_DIR = ".vector_cache"
+_STORE_DIR = ".faiss_store"
+_INDEX_FILE = "portfolio.faiss"
+_META_FILE = "portfolio_meta.pkl"
 
 
 class VectorStore:
     def __init__(self, model_name: str = _MODEL_NAME) -> None:
         if not _HAS_DEPS:
             raise ImportError(
-                "Missing deps. Run: pip install faiss-cpu sentence-transformers"
+                f"Missing dependencies: {_IMPORT_ERROR}.\n"
+                "CRITICAL: Please use 'make start' to run the app correctly."
             )
         self.model = SentenceTransformer(model_name)
         self.index: Optional[faiss.Index] = None
@@ -52,59 +73,96 @@ class VectorStore:
         k = min(k, self.index.ntotal)
         scores, indices = self.index.search(q_emb, k)
         return [
-            {
-                "text": self.documents[idx],
-                "metadata": self.metadata[idx],
-                "score": float(score),
-            }
-            for score, idx in zip(scores[0], indices[0])
-            if idx >= 0
+            {"text": self.documents[i], "metadata": self.metadata[i], "score": float(s)}
+            for s, i in zip(scores[0], indices[0])
+            if i >= 0
         ]
 
     def save(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
-        faiss.write_index(self.index, str(path / "index.faiss"))
-        with open(path / "docs.pkl", "wb") as f:
+        faiss.write_index(self.index, str(path / _INDEX_FILE))
+        with open(path / _META_FILE, "wb") as f:
             pickle.dump({"documents": self.documents, "metadata": self.metadata}, f)
 
     @classmethod
     def load(cls, path: Path, model_name: str = _MODEL_NAME) -> "VectorStore":
         store = cls(model_name)
-        store.index = faiss.read_index(str(path / "index.faiss"))
-        with open(path / "docs.pkl", "rb") as f:
+        store.index = faiss.read_index(str(path / _INDEX_FILE))
+        with open(path / _META_FILE, "rb") as f:
             data = pickle.load(f)
         store.documents = data["documents"]
         store.metadata = data["metadata"]
         return store
 
+    @property
+    def total_docs(self) -> int:
+        return self.index.ntotal if self.index else 0
+
+
+# ── Chunking helpers ──────────────────────────────────────────────────────────
 
 def _chunk_portfolio(portfolio_path: Path) -> tuple[list[str], list[dict]]:
-    portfolio = json.loads(portfolio_path.read_text(encoding="utf-8"))
+    """Chunks the portfolio.json (a JSON array of holdings)."""
+    raw = json.loads(portfolio_path.read_text(encoding="utf-8"))
+    # Support both list format and dict-with-holdings format
+    holdings = raw if isinstance(raw, list) else raw.get("holdings", [])
+    total_value = sum(h.get("holding_value", 0) for h in holdings)
+
     texts, meta = [], []
-    for h in portfolio["holdings"]:
+    for h in holdings:
+        weight = (h.get("holding_value", 0) / total_value * 100) if total_value else 0
         text = (
-            f"Holding: {h['company']} (ticker: {h['ticker']})\n"
-            f"Type: {h['type']}, Sector: {h['sector']}\n"
-            f"Quantity: {h['quantity']} units, Avg Buy Price: ₹{h['avg_buy_price']:,.2f}\n"
-            f"Current Price: ₹{h['current_price']:,.2f}, Current Value: ₹{h['current_value']:,.0f}\n"
-            f"Portfolio Weight: {h['weight_pct']:.2f}%\n"
-            f"Unrealized P&L: ₹{h['unrealized_pnl']:,.0f} ({h['unrealized_pnl_pct']:+.2f}%)"
+            f"Holding: {h['name']} (ticker: {h['ticker']})\n"
+            f"Type: {h['asset_type']}, Sector: {h['sector']}\n"
+            f"Quantity: {h['quantity']} units  Avg Cost: ₹{h['avg_cost']:,.2f}\n"
+            f"Current Price: ₹{h['current_price']:,.2f}  Value: ₹{h['holding_value']:,.0f}\n"
+            f"Portfolio Weight: {weight:.2f}%\n"
+            f"Unrealized P&L: ₹{h['unrealised_pnl']:,.0f} ({h['pnl_pct']:+.2f}%)"
         )
         texts.append(text)
-        meta.append({"source": "portfolio", "ticker": h["ticker"], "type": "holding"})
+        meta.append({"source": "portfolio.json", "ticker": h["ticker"], "type": "holding"})
+
+        # Also chunk embedded news items from portfolio.json
+        for news_item in h.get("news", []):
+            news_text = (
+                f"[{news_item['date']}] {news_item['title']}\n"
+                f"{news_item['snippet']}\n"
+                f"Related holding: {h['name']} ({h['ticker']})\n"
+                f"Source: {news_item['source']}"
+            )
+            texts.append(news_text)
+            meta.append({
+                "source": f"portfolio_news_{h['ticker']}",
+                "ticker": h["ticker"],
+                "type": "news",
+            })
+
+    return texts, meta
+
+
+def _chunk_augmented(aug_path: Path) -> tuple[list[str], list[dict]]:
+    if not aug_path.exists():
+        return [], []
+    data = json.loads(aug_path.read_text(encoding="utf-8"))
+    texts, meta = [], []
+    items = data if isinstance(data, list) else data.get("holdings", [])
+    for item in items:
+        texts.append(json.dumps(item, indent=2))
+        meta.append({"source": "portfolio_augmented.json", "type": "augmented"})
     return texts, meta
 
 
 def _chunk_glossary(glossary_path: Path) -> tuple[list[str], list[dict]]:
+    if not glossary_path.exists():
+        return [], []
     content = glossary_path.read_text(encoding="utf-8")
     texts, meta = [], []
-    current_term = ""
-    current_lines: list[str] = []
+    current_term, current_lines = "", []
 
     def flush():
         if current_term and current_lines:
             texts.append(f"{current_term}\n" + "\n".join(current_lines))
-            meta.append({"source": "glossary", "term": current_term, "type": "definition"})
+            meta.append({"source": "glossary.md", "term": current_term, "type": "definition"})
 
     for line in content.splitlines():
         if line.startswith("## "):
@@ -118,6 +176,8 @@ def _chunk_glossary(glossary_path: Path) -> tuple[list[str], list[dict]]:
 
 
 def _chunk_news(news_dir: Path) -> tuple[list[str], list[dict]]:
+    if not news_dir.exists():
+        return [], []
     texts, meta = [], []
     for f in sorted(news_dir.glob("*.md")):
         content = f.read_text(encoding="utf-8")
@@ -127,17 +187,33 @@ def _chunk_news(news_dir: Path) -> tuple[list[str], list[dict]]:
 
 
 def build_store(data_dir: Path, force_rebuild: bool = False) -> VectorStore:
-    cache_path = data_dir.parent / _CACHE_DIR
-    if not force_rebuild and (cache_path / "index.faiss").exists():
+    cache_path = data_dir.parent / _STORE_DIR
+    if not force_rebuild and (cache_path / _INDEX_FILE).exists():
         return VectorStore.load(cache_path)
 
     store = VectorStore()
-    p_texts, p_meta = _chunk_portfolio(data_dir / "portfolio.json")
-    g_texts, g_meta = _chunk_glossary(data_dir / "glossary.md")
-    n_texts, n_meta = _chunk_news(data_dir / "news")
+    for loader, args in [
+        (_chunk_portfolio, (data_dir / "portfolio.json",)),
+        (_chunk_augmented, (data_dir / "portfolio_augmented.json",)),
+        (_chunk_glossary,  (data_dir / "glossary.md",)),
+        (_chunk_news,      (data_dir / "news",)),
+    ]:
+        t, m = loader(*args)
+        store.add_documents(t, m)
 
-    store.add_documents(p_texts, p_meta)
-    store.add_documents(g_texts, g_meta)
-    store.add_documents(n_texts, n_meta)
     store.save(cache_path)
     return store
+
+
+def get_index_stats(data_dir: Path) -> dict[str, int]:
+    """Return per-source document counts without building a full store."""
+    counts: dict[str, int] = {}
+    p, _ = _chunk_portfolio(data_dir / "portfolio.json") if (data_dir / "portfolio.json").exists() else ([], [])
+    counts["portfolio"] = len(p)
+    a, _ = _chunk_augmented(data_dir / "portfolio_augmented.json")
+    counts["augmented"] = len(a)
+    g, _ = _chunk_glossary(data_dir / "glossary.md")
+    counts["glossary"] = len(g)
+    n, _ = _chunk_news(data_dir / "news")
+    counts["news"] = len(n)
+    return counts

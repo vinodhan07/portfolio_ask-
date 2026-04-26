@@ -8,25 +8,25 @@ setup:
 
 # ── Build FAISS index from data/ (run once after adding data files) ───────────
 index:
-	python scripts/build_index.py
+	uv run python scripts/build_index.py
 
 index-force:
-	python scripts/build_index.py --force
+	uv run python scripts/build_index.py --force
 
 # ── Start the interactive CLI ─────────────────────────────────────────────────
 start:
-	python -m portfolio_ask
+	uv run python -m portfolio_ask
 
 # ── One-shot query (non-interactive) ─────────────────────────────────────────
 run:
-	python -m portfolio_ask --query $(QUERY)
+	uv run python -m portfolio_ask --query $(QUERY)
 
 run-json:
-	python -m portfolio_ask --query $(QUERY) --json
+	uv run python -m portfolio_ask --query $(QUERY) --json
 
-# ── Run evals ─────────────────────────────────────────────────────────────────
-eval:
-	python evals/run_eval.py
+# ── Monitoring ────────────────────────────────────────────────────────────────
+logs:
+	tail -f portfolio.log
 
 # ── Clean generated artefacts ────────────────────────────────────────────────
 clean:

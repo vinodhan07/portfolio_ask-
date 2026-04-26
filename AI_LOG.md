@@ -3,8 +3,8 @@
 ## Overview
 **Project:** AI-powered portfolio Q&A CLI with RAG + LangChain ReAct Agent
 **Model Stack:**
-- Agent reasoning and tool usage: `gemini-2.5-flash`
-- News impact analysis (deep reasoning): `gemini-1.5-pro`
+- Agent reasoning and tool usage: `gemini-flash-latest`
+- News impact analysis (deep reasoning): `gemini-flash-latest` (Consolidated to avoid Free Tier Pro quota limits)
 - Embeddings: `sentence-transformers/all-MiniLM-L6-v2` (FAISS)
 
 **Key Architecture:**
@@ -23,6 +23,7 @@ User Query → LangChain ReAct Agent → Chooses one of four tools:
 - **Switched to LangChain ReAct Agent:** We removed LangGraph completely. Now, the query routing is handled by a simpler LangChain ReAct Agent using `create_react_agent` and `AgentExecutor`. The four main tasks (allocation, metrics, general QA, and news impact) are just simple LangChain tools.
 - **Cleaned up agent.py:** Removed all the long, robotic docstrings and decorative separator lines to make the code look like it was written by a real human developer.
 - **Fixed Model Bugs:** Fixed a small bug where the `Holding` model expected `company` instead of `name` to match `portfolio.json`. We also added the missing `from_list` function to the `Portfolio` class so it can load our data properly.
+- **Model Stability Update:** We upgraded the main models to `gemini-flash-latest`. Previously, we were using newer "latest" models that caused "503 Unavailable" and "429 Resource Exhausted" errors because Google's servers had too much traffic and Free Tier quotas for Pro models are extremely restrictive (often set to 0). The `gemini-flash-latest` model is extremely fast, stable, has generous free quotas, and will prevent those random crashes.
 
 ---
 
