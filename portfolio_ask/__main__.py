@@ -1,19 +1,15 @@
 """
 portfolio-ask  —  interactive AI portfolio intelligence CLI
-
-Start:
-    python -m portfolio_ask
-    portfolio-ask            (after pip install -e .)
-
-One-shot (non-interactive):
-    python -m portfolio_ask --query "What is my IT exposure?"
 """
 from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
+from datetime import datetime
 
+import typer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,72 +21,270 @@ from rich.prompt import Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
+from rich.rule import Rule
 
+# Assumes these exist in your project
 from .agent import QueryRouter
 from .models import AllocationResponse, GeneralQaResponse, MetricsResponse, NewsImpactResponse, Portfolio
 from .retriever import VectorStore, build_store
-from .logger import setup_logger
+from .logger import setup_logger, logger
 
 setup_logger()
 
+# Initialize Typer and Rich
+app = typer.Typer(help="AI-powered portfolio intelligence CLI", rich_markup_mode="rich")
 console = Console()
 
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _VERSION = "0.1.0"
 
-_WELCOME_QUERIES = [
-    "What is my allocation to the banking sector?",
-    "How does the latest RBI rate decision affect my portfolio?",
-    "What is my total unrealized P&L?",
-    "Which holdings are exposed to IT sector headwinds?",
-    "What percentage of my portfolio is in equities?",
-]
+# --- GLOBAL STYLING DICTIONARIES ---
+_COLORS = {
+    "allocation": "cyan",
+    "metrics": "green",
+    "news_impact": "red",
+    "general_qa": "magenta",
+}
+_LABELS = {
+    "allocation": "ALLOCATION",
+    "metrics": "METRICS",
+    "news_impact": "NEWS IMPACT",
+    "general_qa": "GENERAL Q&A",
+}
 
+_GEMINI_LOGO = r"""
+[bold blue]
+ _|_|_|      _|_|    _|_|_|    _|_|_|_|_|  _|_|_|_|    _|_|    _|        
+ _|    _|  _|    _|  _|    _|      _|      _|        _|    _|  _|        
+ _|_|_|    _|    _|  _|_|_|        _|      _|_|_|    _|    _|  _|        
+ _|        _|    _|  _|    _|      _|      _|        _|    _|  _|        
+ _|          _|_|    _|    _|      _|      _|          _|_|    _|_|_|_|  
+                                                                        
+                                                                        
+ _|_|_|    _|_|    
+   _|    _|    _|  
+   _|    _|    _|  
+   _|    _|    _|  
+ _|_|_|    _|_|    
+[/bold blue]
+"""
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# ── Header & Visuals ──────────────────────────────────────────────────────────
 
-_WELCOME_ART = r"""[bold cyan]
- __      __   _                    _          _   _          ___ _    ___ 
- \ \    / /__| |__ ___ _ __  ___  | |_ ___   | |_| |_  ___  / __| |  |_ _|
-  \ \/\/ / -_) / _/ _ \ '  \/ -_) |  _/ _ \  |  _| ' \/ -_) | (__| |__ | | 
-   \_/\_/\___|_\__\___/_|_|_\___|  \__\___/   \__|_||_\___|  \___|____|___|
-[/bold cyan]"""
-
-
-def _banner(portfolio: Portfolio, store: VectorStore) -> None:
+def _print_banner(portfolio: Portfolio, store: VectorStore) -> None:
     console.clear()
-    console.print(_WELCOME_ART)
-    console.print()
-
-    # Title block
+    
+    # Custom ASCII Art Logo (Blue/Gemini style)
+    console.print(_GEMINI_LOGO, highlight=False)
+    
+    # Branding & Version
     title = Text(justify="left")
-    title.append("  portfolio", style="bold white")
+    title.append("   portfolio", style="bold white")
     title.append("-ask", style="bold dark_red")
-    title.append(f"  v{_VERSION}", style="dim")
     console.print(title)
     console.print()
 
-    # Stats grid
-    g = Table.grid(padding=(0, 3))
-    g.add_column(style="bold cyan", min_width=12)
-    g.add_column(style="white")
-    g.add_row(
-        "Portfolio",
-        f"₹{portfolio.total_value:,.0f}  ·  {len(portfolio.holdings)} holdings",
+    tips = """[bold dim]Tips for getting started:[/bold dim]
+    [dim]1. Ask natural questions about your holdings or market impacts.
+    2. Be specific for the best results.
+    3. Use [bold cyan]/portfolio[/bold cyan] to see your current tracked assets.
+    4. Use [bold cyan]/help[/bold cyan] for more slash commands.[/dim]
+    """
+    console.print(tips)
+
+    # Dynamic Suggestions based on actual holdings
+    import random
+    holdings = [h.ticker.split('.')[0] for h in portfolio.holdings]
+    sectors = list(set(h.sector for h in portfolio.holdings))
+    
+    pool = [
+        f"How does the latest news affect my {random.choice(holdings)} holdings?",
+        f"What is my current allocation to the {random.choice(sectors)} sector?",
+        f"Compare the performance of {random.choice(holdings)} and {random.choice(holdings)}.",
+        f"What is the total unrealized P&L for my {random.choice(sectors)} assets?",
+        f"Give me a summary of the latest news for {random.choice(holdings)}."
+    ]
+    suggested_queries = random.sample(pool, 3)
+    
+    console.print("[bold dim]Suggested questions:[/bold dim]")
+    for q in suggested_queries:
+        console.print(f"    [dim italic]• {q}[/dim italic]")
+    console.print()
+
+
+def _get_user_input() -> str:
+    """Renders the bounding box footer and gets user input"""
+    # Create a clean command bar instead of technical info
+    cmd_bar = Text.assemble(
+        (" /portfolio ", "bold cyan"), ("view holdings", "dim"), ("  •  ", "white dim"),
+        (" /help ", "bold yellow"), ("all commands", "dim"), ("  •  ", "white dim"),
+        (" /quit ", "bold red"), ("exit", "dim")
     )
 
-    console.print(g)
+    info_panel = Panel(
+        cmd_bar,
+        title="[dim]Available Commands[/dim]",
+        title_align="left",
+        border_style="blue dim",
+        padding=(1, 2),
+    )
+    console.print(info_panel)
+    
+    # Safe Rich input instead of raw input()
+    return Prompt.ask("\n[bold blue]>[/bold blue] ")
+
+
+# ── Renderers ─────────────────────────────────────────────────────────────────
+
+def _get_rtype(result) -> str:
+    if isinstance(result, AllocationResponse): return "allocation"
+    if isinstance(result, MetricsResponse): return "metrics"
+    if isinstance(result, NewsImpactResponse): return "news_impact"
+    if isinstance(result, GeneralQaResponse): return "general_qa"
+    return "general_qa"
+
+def _render_footer(rtype: str):
+    """Adds the timestamp and type label to every response"""
+    ts = datetime.now().strftime("%H:%M")
+    color = _COLORS.get(rtype, "white")
+    label = _LABELS.get(rtype, "UNKNOWN")
+    console.print(f"\n  [dim][{color}]{label}[/{color}]  ·  {ts}[/dim]")
+    console.print(Rule(style="dim"))
     console.print()
 
-    # Suggested queries
-    console.print("  [bold yellow]💻 Suggestions:[/bold yellow]")
-    for i, q in enumerate(_WELCOME_QUERIES, 1):
-        console.print(f"    [bold cyan]{i}.[/bold cyan] {q}")
+from rich.markdown import Markdown
 
+def _render_tools(result) -> str:
+    """Formats tools_used into a visual tag string."""
+    if hasattr(result, "tools_used") and result.tools_used:
+        unique_tools = list(dict.fromkeys(result.tools_used))
+        tags = " ".join([f"[[bold cyan]◈ {t}[/bold cyan]]" for t in unique_tools])
+        return f"[dim]Logic:[/dim] {tags}"
+    return "[dim italic]Direct knowledge retrieval[/dim italic]"
+
+def _render_allocation(result: AllocationResponse):
+    console.print(
+        Panel(
+            Markdown(result.answer), 
+            title="[bold cyan]◆ Allocation Analysis[/bold cyan]", 
+            subtitle=_render_tools(result),
+            subtitle_align="right",
+            border_style="cyan", 
+            padding=(0, 2)
+        )
+    )
+    if result.holdings_referenced:
+        refs = "  ·  ".join(f"[bold]{t}[/bold]" for t in result.holdings_referenced)
+        console.print(f"  [dim]Holdings:[/dim]  {refs}")
+
+def _render_news_impact(result: NewsImpactResponse):
+    # 1. The Summary Panel
+    summary_text = Markdown(result.summary)
+    console.print(
+        Panel(
+            summary_text, 
+            title="[bold red]◆ News Impact Analysis[/bold red]", 
+            subtitle=_render_tools(result),
+            subtitle_align="right",
+            border_style="red", 
+            padding=(0, 2)
+        )
+    )
     console.print()
 
+    if not result.impacts:
+        console.print("  [dim]No portfolio holdings directly mentioned in retrieved news.[/dim]")
+        return
 
-# ── Slash command handlers ────────────────────────────────────────────────────
+    # 2. The Professional Data Table
+    t = Table(
+        box=box.SIMPLE,
+        show_header=True,
+        header_style="bold white",
+        expand=True,
+        padding=(0, 1)
+    )
+    
+    t.add_column("Asset", justify="left", style="bold cyan", ratio=2)
+    t.add_column("Exposure", justify="center", ratio=1)
+    t.add_column("Weight", justify="right", style="dim", ratio=1)
+    t.add_column("Rationale & Sources", justify="left", ratio=6)
+
+    exposure_badges = {
+        "HIGH": "[bold white on red] HIGH [/bold white on red]",
+        "MEDIUM": "[bold black on yellow] MED [/bold black on yellow]",
+        "LOW": "[bold black on green] LOW [/bold black on green]"
+    }
+
+    for item in result.impacts:
+        asset = f"{item.ticker}\n[dim]{item.company_name}[/dim]"
+        badge = exposure_badges.get(item.exposure_level.upper(), f"[{item.exposure_level}]")
+        weight = f"{item.portfolio_weight_pct:.2f}%"
+        
+        if hasattr(item, 'sources') and item.sources:
+            sources_str = ", ".join(item.sources)
+            rationale_display = f"{item.rationale}\n\n[dim italic]› Sources: {sources_str}[/dim italic]"
+        else:
+            rationale_display = item.rationale
+
+        t.add_row(asset, badge, weight, rationale_display)
+        t.add_section() 
+
+    console.print(t)
+
+def _render_metrics(result: MetricsResponse):
+    console.print(
+        Panel(
+            Markdown(result.answer), 
+            title="[bold green]◆ Portfolio Metrics[/bold green]", 
+            subtitle=_render_tools(result),
+            subtitle_align="right",
+            border_style="green", 
+            padding=(0, 2)
+        )
+    )
+    if result.metrics:
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0, 3))
+        t.add_column(style="bold", min_width=28)
+        t.add_column(style="green")
+        for k, v in result.metrics.items():
+            t.add_row(k, str(v))
+        console.print(t)
+
+def _render_general(result: GeneralQaResponse):
+    console.print(
+        Panel(
+            Markdown(result.answer), 
+            title="[bold magenta]◆ General Knowledge[/bold magenta]", 
+            subtitle=_render_tools(result),
+            subtitle_align="right",
+            border_style="magenta", 
+            padding=(0, 2)
+        )
+    )
+
+
+def _route_and_render(result, json_mode: bool) -> str:
+    """Master render router"""
+    if json_mode:
+        console.print(Syntax(result.model_dump_json(indent=2), "json", theme="monokai"))
+        return result.model_dump_json()[:80]
+
+    rtype = _get_rtype(result)
+    
+    if rtype == "allocation": _render_allocation(result)
+    elif rtype == "news_impact": _render_news_impact(result)
+    elif rtype == "metrics": _render_metrics(result)
+    else: _render_general(result)
+
+    _render_footer(rtype)
+    
+    summary = getattr(result, "answer", getattr(result, "summary", str(result)))
+    logger.info(f"Rendered Result [{rtype.upper()}]: {summary[:100]}...")
+    return summary[:100]
+
+
+# ── Slash commands ────────────────────────────────────────────────────────────
 
 def _cmd_help() -> None:
     t = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
@@ -98,7 +292,6 @@ def _cmd_help() -> None:
     t.add_column(style="white")
     rows = [
         ("/portfolio, /p",  "Show full portfolio holdings table"),
-        ("/history,  /h",   "Show Q&A history for this session"),
         ("/rebuild",        "Force-rebuild the FAISS vector index from data/"),
         ("/clear,    /c",   "Clear screen and redraw the banner"),
         ("/json",           "Toggle raw JSON output mode (current session)"),
@@ -131,259 +324,89 @@ def _cmd_portfolio(portfolio: Portfolio) -> None:
     console.print(t)
 
 
-def _cmd_history(history: list[dict]) -> None:
-    if not history:
-        console.print("  [dim]No queries yet this session.[/dim]")
-        return
-    for i, item in enumerate(history, 1):
-        label_color = {"allocation": "cyan", "metrics": "green", "newsimpact": "red"}.get(
-            item["type"], "white"
-        )
-        console.print(
-            f"  [dim]{i:2}.[/dim]  [{label_color}]{item['type']:<12}[/{label_color}]  {item['query']}"
-        )
+def _handle_slash_command(cmd: str, portfolio: Portfolio, store: VectorStore, router: QueryRouter, json_mode: bool) -> bool:
+    """Returns the new state of json_mode."""
+    logger.info(f"Slash Command: {cmd}")
+    if cmd in ("/quit", "/exit", "/q"):
+        console.print("\n  [bold cyan]●[/bold cyan] [dim]Shutting down Portfolio-Ask... Goodbye.[/dim]\n")
+        sys.exit(0)
+    elif cmd in ("/clear", "/c"):
+        _print_banner(portfolio, store)
+    elif cmd in ("/portfolio", "/p"):
+        _cmd_portfolio(portfolio)
+    elif cmd in ("/help",):
+        _cmd_help()
+    elif cmd == "/rebuild":
+        with console.status("[bold]Rebuilding FAISS index…[/bold]"):
+            new_store = build_store(_DATA_DIR, force_rebuild=True)
+            router.store = new_store
+        console.print(f"  [green]✓[/green] Index rebuilt  ·  {new_store.total_docs} documents")
+    elif cmd == "/json":
+        json_mode = not json_mode
+        state = "[green]ON[/green]" if json_mode else "[dim]OFF[/dim]"
+        console.print(f"  JSON mode {state}")
+        return json_mode
+    else:
+        console.print(f"  [red]Unknown command:[/red] {cmd}")
+    console.print()
+    return json_mode
 
 
-# ── Result renderers ──────────────────────────────────────────────────────────
+# ── Typer Application ─────────────────────────────────────────────────────────
 
-def _render(
-    result: AllocationResponse | MetricsResponse | NewsImpactResponse | GeneralQaResponse,
-    json_mode: bool,
-) -> str:
-    """Render result to console; return short summary string for history."""
-    if json_mode:
-        console.print(Syntax(result.model_dump_json(indent=2), "json", theme="monokai"))
-        return result.model_dump_json()[:80]
-
-    if isinstance(result, AllocationResponse):
-        console.print(
-            Panel(
-                result.answer,
-                title="[bold cyan]Allocation Analysis[/bold cyan]",
-                border_style="cyan",
-                padding=(1, 2),
-            )
-        )
-        if result.holdings_referenced:
-            refs = "  ·  ".join(f"[bold]{t}[/bold]" for t in result.holdings_referenced)
-            console.print(f"  [dim]Holdings:[/dim]  {refs}")
-        if result.sources:
-            src = "  ·  ".join(f"[dim]{s}[/dim]" for s in set(result.sources) if s != "unknown")
-            if src:
-                console.print(f"  [dim]Sources:[/dim]   {src}")
-        return result.answer[:100]
-
-    if isinstance(result, MetricsResponse):
-        console.print(
-            Panel(
-                result.answer,
-                title="[bold green]Portfolio Metrics[/bold green]",
-                border_style="green",
-                padding=(1, 2),
-            )
-        )
-        if result.metrics:
-            t = Table(box=box.SIMPLE, show_header=False, padding=(0, 3))
-            t.add_column(style="bold", min_width=28)
-            t.add_column(style="green")
-            for k, v in result.metrics.items():
-                t.add_row(k, str(v))
-            console.print(t)
-        if result.sources:
-            src = "  ·  ".join(f"[dim]{s}[/dim]" for s in set(result.sources) if s != "unknown")
-            if src:
-                console.print(f"  [dim]Sources:[/dim]  {src}")
-        return result.answer[:100]
-
-    if isinstance(result, NewsImpactResponse):
-        console.print(
-            Panel(
-                result.summary,
-                title="[bold red]News Impact[/bold red]",
-                border_style="red",
-                padding=(1, 2),
-            )
-        )
-        if result.impacts:
-            t = Table(
-                "Ticker", "Company", "Exposure", "Weight %", "Sources",
-                box=box.SIMPLE_HEAVY,
-                show_header=True,
-                header_style="bold red",
-            )
-            color_map = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}
-            for item in result.impacts:
-                c = color_map.get(item.exposure_level, "white")
-                t.add_row(
-                    f"[bold]{item.ticker}[/bold]",
-                    item.company_name,
-                    f"[{c}]{item.exposure_level}[/{c}]",
-                    f"{item.portfolio_weight_pct:.2f}%",
-                    ", ".join(item.sources),
-                )
-            console.print(t)
-            console.print()
-            for item in result.impacts:
-                console.print(f"  [bold]{item.ticker}[/bold]  {item.rationale}")
-        else:
-            console.print("  [dim]No portfolio holdings directly mentioned in retrieved news.[/dim]")
-        return result.summary[:100]
-
-    if isinstance(result, GeneralQaResponse):
-        console.print(
-            Panel(
-                result.answer,
-                title="[bold magenta]General Knowledge / RAG[/bold magenta]",
-                border_style="magenta",
-                padding=(1, 2),
-            )
-        )
-        if result.sources:
-            refs = "  ·  ".join(f"[dim]{s}[/dim]" for s in set(result.sources) if s != "unknown")
-            if refs:
-                console.print(f"  [dim]Sources:[/dim]  {refs}")
-        return result.answer[:100]
-
-    return str(result)[:100]
-
-
-# ── REPL ──────────────────────────────────────────────────────────────────────
-
-def _repl(router: QueryRouter, portfolio: Portfolio, store: VectorStore) -> None:
-    history: list[dict] = []
-    json_mode = False
-
-    _banner(portfolio, store)
-
-    while True:
-        console.rule(title="[bold cyan]Command Input[/bold cyan]", style="bold cyan")
-        console.print()
-        console.rule(style="bold cyan")
-        console.print("  [bold green]If you need any requirements use [white]/help[/white] | To quit use [white]/quit[/white][/bold green]")
-        
-        sys.stdout.write("\033[3A\033[2C")
-        console.print("[bold cyan]>[/bold cyan] ", end="")
-        sys.stdout.flush()
-        
-        try:
-            raw = input()
-            sys.stdout.write("\033[4B\r")
-            sys.stdout.flush()
-        except (KeyboardInterrupt, EOFError):
-            sys.stdout.write("\033[4B\r")
-            sys.stdout.flush()
-            console.print("\n  [bold cyan]●[/bold cyan] [dim]Shutting down Portfolio-Ask... Goodbye.[/dim]\n")
-            break
-
-        query = raw.strip()
-        if not query:
-            continue
-
-        # ── slash commands ──────────────────────────────────────────────────
-        if query.startswith("/"):
-            cmd = query.lower().split()[0]
-
-            if cmd in ("/quit", "/exit", "/q"):
-                console.print("\n  [bold cyan]●[/bold cyan] [dim]Shutting down Portfolio-Ask... Goodbye.[/dim]\n")
-                break
-            elif cmd in ("/help",):
-                _cmd_help()
-            elif cmd in ("/portfolio", "/p"):
-                _cmd_portfolio(portfolio)
-            elif cmd in ("/history", "/h"):
-                _cmd_history(history)
-            elif cmd == "/rebuild":
-                with console.status("[bold]Rebuilding FAISS index…[/bold]"):
-                    new_store = build_store(_DATA_DIR, force_rebuild=True)
-                    router.store = new_store
-                console.print(
-                    f"  [green]✓[/green] Index rebuilt  ·  {new_store.total_docs} documents"
-                )
-            elif cmd in ("/clear", "/c"):
-                _banner(portfolio, store)
-            elif cmd == "/json":
-                json_mode = not json_mode
-                state = "[green]ON[/green]" if json_mode else "[dim]OFF[/dim]"
-                console.print(f"  JSON mode {state}")
-            else:
-                console.print(
-                    f"  [red]Unknown command:[/red] {cmd}  —  type [bold]/help[/bold]"
-                )
-            console.print()
-            continue
-
-        # ── natural language query ──────────────────────────────────────────
-        with console.status("[bold]Thinking…[/bold]"):
-            result = router.answer(query, history=history)
-
-        summary = _render(result, json_mode)
-        console.print()
-        console.rule(style="dim")
-        console.print()
-
-        history.append(
-            {
-                "query": query,
-                "type": type(result).__name__.replace("Response", "").lower(),
-                "summary": summary,
-            }
-        )
-
-
-# ── Entry point ───────────────────────────────────────────────────────────────
-
-def main() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        prog="portfolio-ask",
-        description="AI-powered portfolio intelligence CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  python -m portfolio_ask\n"
-            '  python -m portfolio_ask --query "What is my IT sector exposure?"\n'
-            '  python -m portfolio_ask --query "RBI impact" --json\n'
-            "  python -m portfolio_ask --rebuild\n"
-        ),
-    )
-    parser.add_argument("--query", "-q", help="Run a single query non-interactively and exit")
-    parser.add_argument("--json",  "-j", action="store_true", help="Output raw JSON (with --query)")
-    parser.add_argument("--rebuild", action="store_true", help="Force-rebuild vector index then exit")
-    args = parser.parse_args()
-
+@app.command()
+def main(
+    query: str = typer.Argument(None, help="Run a single query non-interactively."),
+    json_mode_opt: bool = typer.Option(False, "--json", "-j", help="Output raw JSON"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Force-rebuild vector index"),
+):
+    # --- 1. Startup & Loading ---
     if not (_DATA_DIR / "portfolio.json").exists():
-        console.print(
-            "[red]Error:[/red] data/portfolio.json not found.\n\n"
-            "Run  [bold]python scripts/build_index.py[/bold]  after populating data/.\n"
-            "Set  [bold]GOOGLE_API_KEY[/bold]  in your .env file."
-        )
+        console.print("[red]Error:[/red] data/portfolio.json not found.")
         sys.exit(1)
 
     with console.status("[bold]Loading portfolio and index…[/bold]"):
         portfolio_data = json.loads((_DATA_DIR / "portfolio.json").read_text(encoding="utf-8"))
-        store = build_store(_DATA_DIR, force_rebuild=args.rebuild)
+        store = build_store(_DATA_DIR, force_rebuild=rebuild)
         router = QueryRouter(portfolio_data, store)
         portfolio = router.portfolio
 
-    if args.rebuild and not args.query:
+    if rebuild and not query:
         console.print(f"[green]✓[/green] Index rebuilt  ·  {store.total_docs} documents")
         return
 
-    if args.query:
-        # Non-interactive single-shot mode
-        console.print(f"\n[dim]Query:[/dim] {args.query}\n")
+    # --- 2. Single-shot Mode ---
+    if query:
+        logger.info(f"Single-shot Query: {query}")
+        console.print(f"\n[dim]Query:[/dim] {query}\n")
         with console.status("[bold]Thinking…[/bold]"):
-            result = router.answer(args.query)
-        if args.json:
-            console.print(Syntax(result.model_dump_json(indent=2), "json", theme="monokai"))
-        else:
-            _render(result, json_mode=False)
+            result = router.answer(query)
+        _route_and_render(result, json_mode_opt)
         return
 
-    # Default: interactive REPL
-    _repl(router, portfolio, store)
+    # --- 3. Interactive REPL Mode ---
+    _print_banner(portfolio, store)
+    json_mode = json_mode_opt
+
+    while True:
+        try:
+            raw_query = _get_user_input().strip()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n  [bold cyan]●[/bold cyan] [dim]Shutting down Portfolio-Ask... Goodbye.[/dim]\n")
+            break
+
+        if not raw_query:
+            continue
+
+        if raw_query.startswith("/"):
+            json_mode = _handle_slash_command(raw_query.lower().split()[0], portfolio, store, router, json_mode)
+            continue
+
+        with console.status("[bold dim]Agent is thinking...[/bold dim]", spinner="dots"):
+            result = router.answer(raw_query)
+
+        summary = _route_and_render(result, json_mode)
 
 
 if __name__ == "__main__":
-    main()
+    app()

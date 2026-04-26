@@ -142,7 +142,7 @@ def answer_metrics(
     store: VectorStore,
     history: list[dict] | None = None,
 ) -> MetricsResponse:
-    chunks  = store.search(query, k=6)
+    chunks  = store.search(query, k=len(portfolio.holdings) + 5)
     context = "\n\n---\n".join(c["text"] for c in chunks)
     sources = list({c["metadata"].get("source", "unknown") for c in chunks})
     hist    = _history_context(history or [])
@@ -361,19 +361,27 @@ class QueryRouter:
         
         def allocation_func(query: str) -> str:
             logger.info(f"Tool Call: allocation_tool | Query: {query}")
-            return answer_allocation(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            res = answer_allocation(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            logger.info(f"Tool Result [ALLOCATION]: {res}")
+            return res
 
         def metrics_func(query: str) -> str:
             logger.info(f"Tool Call: metrics_tool | Query: {query}")
-            return answer_metrics(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            res = answer_metrics(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            logger.info(f"Tool Result [METRICS]: {res}")
+            return res
 
         def general_qa_func(query: str) -> str:
             logger.info(f"Tool Call: general_qa_tool | Query: {query}")
-            return answer_general_qa(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            res = answer_general_qa(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            logger.info(f"Tool Result [GENERAL_QA]: {res}")
+            return res
 
         def news_impact_func(query: str) -> str:
             logger.info(f"Tool Call: news_impact_tool | Query: {query}")
-            return run_news_impact_agent(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            res = run_news_impact_agent(query, self.portfolio, self.store, getattr(self, "current_history", None)).model_dump_json()
+            logger.info(f"Tool Result [NEWS_IMPACT]: {res}")
+            return res
 
         tools = [
             StructuredTool.from_function(
@@ -427,7 +435,7 @@ Thought:{agent_scratchpad}'''
         self.agent_executor = AgentExecutor(
             agent=self.agent,
             tools=tools,
-            verbose=True,
+            verbose=False,
             handle_parsing_errors=True,
             return_intermediate_steps=True,
         )
@@ -449,13 +457,16 @@ Thought:{agent_scratchpad}'''
         logger.info(f"User Query: {query}")
         self.current_history = history
 
+        used_tools = []
         try:
             response = self.agent_executor.invoke({"input": query})
             final_answer = response.get("output", str(response))
             intermediate_steps = response.get("intermediate_steps", [])
 
-            # Try to parse the last tool's structured JSON output
             if intermediate_steps:
+                for action, _ in intermediate_steps:
+                    used_tools.append(action.tool)
+
                 last_action, last_output = intermediate_steps[-1]
                 tool_name = last_action.tool
                 response_cls = self._tool_response_map.get(tool_name)
@@ -463,7 +474,10 @@ Thought:{agent_scratchpad}'''
                 if response_cls and isinstance(last_output, str):
                     try:
                         data = _parse_json(last_output)
-                        return response_cls(**data)
+                        result = response_cls(**data)
+                        if hasattr(result, "tools_used"):
+                            result.tools_used = used_tools
+                        return result
                     except Exception:
                         pass  # Fall through to default
 
@@ -474,4 +488,5 @@ Thought:{agent_scratchpad}'''
             query=query,
             answer=final_answer,
             sources=[],
+            tools_used=used_tools
         )
