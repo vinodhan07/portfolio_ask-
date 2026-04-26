@@ -26,7 +26,7 @@ graph TD
     end
 
     subgraph "Intelligence Engine (agent.py)"
-        CLI((User Query)) --> Router{Gemini 2.0 Router}
+        CLI((User Query)) --> Router{Gemini 2.0 Flash}
         Router --> |Search| FAISS
         Router --> |Analyze| Portfolio[Portfolio Context]
         
@@ -48,6 +48,28 @@ graph TD
         Report --> Sources[Mandatory Citations]
     end
 ```
+
+## 📂 Project Structure
+
+```text
+├── portfolio_ask/          # Core engine (Agent, RAG, CLI logic)
+│   ├── agent.py            # LangChain ReAct & tool orchestration
+│   ├── retriever.py        # FAISS vector indexing & semantic search
+│   ├── models.py           # Pydantic response schemas
+│   ├── prompts.py          # Disciplined operational instructions
+│   └── __main__.py         # PORT AGENT interactive CLI
+├── data/                   # Knowledge Base & Portfolio ground truth
+│   ├── portfolio.json      # Holdings, sectors, and P&L data
+│   └── news/               # Market news archive (.md / .txt)
+├── docs/                   # Visual architecture & logic flow diagrams
+├── evals/                  # Automated quality assurance & test cases
+├── scripts/                # Indexing and graph generation utilities
+├── AI_LOG.md               # Narrated development & negotiation log
+├── pyproject.toml          # Project metadata & dependencies
+├── Makefile                # Automation shortcuts (start, test, build)
+└── .env.example            # Environment configuration template
+```
+
 > [!TIP]
 > Detailed architecture diagrams and logic flow charts are available in the [docs/](./docs) directory.
 
