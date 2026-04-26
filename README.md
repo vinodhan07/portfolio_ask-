@@ -1,153 +1,91 @@
-# portfolio-ask
+# Ask-Your-Portfolio: Multi-Step Intelligence Agent
 
-AI-powered portfolio intelligence CLI — conversational interface over your Indian equity portfolio.
+**Ask-Your-Portfolio** is a professional, enterprise-grade AI agent designed to provide deep insights into Indian equity portfolios. Built with a focus on accuracy and transparency, it combines **Google Gemini 2.0 Flash** with a robust **RAG (Retrieval-Augmented Generation)** pipeline to analyze market news and portfolio data.
 
-```
-  portfolio-ask  v0.1.0
+---
 
-  Portfolio    PORT-2024-001  ·  ₹49,66,500  ·  15 holdings
-  Index        53 documents  ·  FAISS cosine  ·  MiniLM-L6
-  Models       Haiku 4.5 (router / RAG)   Sonnet 4.6 (news-impact agent)
+## 🚀 Key Features
 
-  ──────────────────────────────────────────────────────────────
-  Type your question below  ·  /help for commands  ·  /quit to exit
-  ──────────────────────────────────────────────────────────────
+*   **Multi-Step Reasoning**: Powered by Gemini 2.0, the agent orchestrates multiple tools to answer complex queries about sector allocation, risk exposure, and performance metrics.
+*   **Professional Analysis Reports**: Outputs are rendered as high-density "Executive Reports" with structured data tables and expert prose summaries.
+*   **Real-time News Impact**: Automatically maps the latest market news to your specific stock tickers (NSE/BSE) to assess portfolio risk.
+*   **Disciplined Response Engine**: Strictly adheres to financial grounding constraints—no hallucinations, no guessing.
 
-  You ▶ What is my banking sector exposure?
-```
+---
 
-## Architecture
+## 🛡️ Operational Constraints (HR-Compliant)
 
-```
-User query
-    │
-    ▼
-Floor 3 — Agent layer (agent.py)
-    QueryRouter → classify → allocation | metrics | news_impact
-                                │               │            │
-                          Standard RAG    RAG+Pydantic   4-Node Variant C
-                                                           Node 1: retrieve news  (FAISS)
-                                                           Node 2: cross-reference tickers
-                                                           Node 3: rank by portfolio weight
-                                                           Node 4: Claude Sonnet → typed JSON
-    │
-    ▼
-Floor 2 — RAG layer (retriever.py)
-    embed query → search FAISS → return top-K chunks with sources
-    │
-    ▼
-Floor 1 — Data layer (data/)
-    portfolio.json · portfolio_augmented.json · glossary.md · news/*.md
-    (static, embedded once by scripts/build_index.py → .faiss_store/)
-```
+This agent is built with a "Safety First" architecture to ensure it can be used in professional financial environments:
 
-## Quick start
+1.  **Strict Grounding**: Every claim must be supported by the provided data. If information is missing, the agent responds with: *"Insufficient data to answer."*
+2.  **Mandatory Citations**: All reports include a "Sources" footer listing every document and data point used.
+3.  **Numerical Integrity**: Precise calculations are performed for weights and values; no approximations are allowed without a data-driven basis.
+4.  **Zero Hallucination**: The agent is programmed to refuse general knowledge questions that are not grounded in the specific portfolio or news context.
 
-```bash
-# 1. Install
-cp .env.example .env          # add GOOGLE_API_KEY  (get one at aistudio.google.com/apikey)
-make setup                    # pip install -e .
+---
 
-# 2. Add your data to data/
-#    portfolio.json, glossary.md, news/*.md
+## 🛠️ Tech Stack
 
-# 3. Build the vector index (once)
-make index
+*   **LLM**: Google Gemini 2.0 Flash (via LangChain)
+*   **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (Bi-Encoder)
+*   **Vector Store**: FAISS (IndexFlatL2) for high-performance semantic retrieval
+*   **UI/UX**: Rich Library (for advanced CLI rendering, roadmap tracking, and data tables)
+*   **Framework**: LangChain (ReAct Agent architecture)
+*   **CLI**: Typer
 
-# 4. Start the interactive CLI
-make start
+---
+
+## 📁 Project Structure
+
+```text
+├── portfolio_ask/          # Core source code
+│   ├── agent.py            # LangChain ReAct agent & tool definitions
+│   ├── retriever.py        # FAISS vector store & embedding logic
+│   ├── models.py           # Pydantic models for structured output
+│   └── __main__.py         # Rich CLI & REPL loop
+├── data/
+│   ├── portfolio.json      # Your equity holdings (Ground Truth)
+│   └── news/               # Market news documents (.md / .txt)
+├── AI_LOG.md               # Detailed development & negotiation log
+└── pyproject.toml          # Dependencies & project metadata
 ```
 
-## Usage
+---
 
-### Interactive (default)
-```bash
-python -m portfolio_ask
-# or
-make start
-```
+## ⚙️ Installation & Usage
 
-Commands inside the REPL:
+1.  **Clone & Install**:
+    ```bash
+    git clone https://github.com/your-username/ask-your-portfolio.git
+    cd ask-your-portfolio
+    # Recommended: use 'uv' for fast installation
+    uv venv && source .venv/bin/activate
+    uv pip install -e .
+    ```
 
-| Command | Description |
-|---------|-------------|
-| `/portfolio` or `/p` | Show full holdings table |
-| `/history` or `/h` | Show Q&A history for this session |
-| `/rebuild` | Force-rebuild the FAISS index |
-| `/clear` or `/c` | Clear screen and redraw banner |
-| `/json` | Toggle raw JSON output mode |
-| `/quit` or `/q` | Exit |
+2.  **Environment Setup**:
+    Create a `.env` file from the example:
+    ```bash
+    cp .env.example .env
+    # Add your GOOGLE_API_KEY from Google AI Studio
+    ```
 
-### One-shot (non-interactive)
-```bash
-python -m portfolio_ask --query "What is my IT sector exposure?"
-python -m portfolio_ask --query "RBI rate impact" --json
-make run QUERY="What is my total unrealized P&L?"
-```
+3.  **Run the Agent**:
+    ```bash
+    make start
+    # or
+    python -m portfolio_ask
+    ```
 
-### Build/rebuild index
-```bash
-make index           # build (skips if already exists)
-make index-force     # force rebuild
-python scripts/build_index.py --force
-```
+---
 
-### Run evals
-```bash
-make eval
-```
+## 📋 Sample Queries
 
-## Data format
+*   *"How does the latest news affect my HDFCBANK holdings?"*
+*   *"What is my current allocation to the Information Technology sector?"*
+*   *"Compare the performance of TCS and INFOSYS."*
+*   *"Give me a summary of the latest news for the Telecom sector."*
 
-### `data/portfolio.json`
-```json
-{
-  "portfolio_id": "PORT-2024-001",
-  "owner": "Investor",
-  "currency": "INR",
-  "as_of_date": "2024-01-15",
-  "total_value": 4966500,
-  "holdings": [
-    {
-      "ticker": "RELIANCE",
-      "company": "Reliance Industries",
-      "type": "equity",
-      "sector": "Energy/Conglomerate",
-      "quantity": 100,
-      "avg_buy_price": 2400.0,
-      "current_price": 2850.0,
-      "current_value": 285000,
-      "weight_pct": 5.74,
-      "unrealized_pnl": 45000,
-      "unrealized_pnl_pct": 18.75
-    }
-  ]
-}
-```
+---
 
-### `data/glossary.md`
-```markdown
-## XIRR
-Extended Internal Rate of Return…
-
-## CAGR
-Compound Annual Growth Rate…
-```
-
-### `data/news/news_01.md`
-Plain markdown, 100–300 words per file. Mention company names or tickers so the cross-reference node picks them up.
-
-## Models used
-
-| Task | Model |
-|------|-------|
-| Query classification | `gemini-2.0-flash` |
-| Allocation / Metrics RAG | `gemini-2.0-flash` |
-| News impact (Node 4) | `gemini-1.5-pro` |
-
-JSON mode (`response_mime_type: application/json`) is enabled on every call — no regex parsing needed.
-
-## Two more days
-
-- **Day 2:** Add `portfolio_augmented.json` with XIRR / CAGR per holding; update `MetricsResponse` to surface computed returns.
-- **Day 3:** Streaming output via `client.messages.stream`; persist session history to `~/.portfolio_ask_history.json`; add `--since` date filter on news retrieval.
+*Developed by Vinodhan | 2026*

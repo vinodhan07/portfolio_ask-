@@ -67,13 +67,22 @@ class NewsImpactResponse(BaseModel):
     query: str
     impacts: list[NewsImpactItem]
     summary: str
+    tools_used: list[str] = []
+
+
+class AllocationItem(BaseModel):
+    sector: str
+    weight_pct: float
+    value_inr: float
 
 
 class AllocationResponse(BaseModel):
     query: str
     answer: str
+    allocation: list[AllocationItem] = []
     holdings_referenced: list[str]
     sources: list[str]
+    tools_used: list[str] = []
 
 
 class MetricsResponse(BaseModel):
@@ -81,6 +90,7 @@ class MetricsResponse(BaseModel):
     metrics: dict[str, str]
     answer: str
     sources: list[str]
+    tools_used: list[str] = []
 
 
 
@@ -88,4 +98,5 @@ class GeneralQaResponse(BaseModel):
     query: str
     answer: str
     sources: list[str]
+    tools_used: list[str] = []
 

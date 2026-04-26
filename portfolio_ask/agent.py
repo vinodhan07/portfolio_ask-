@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Optional, TypedDict, Union
+from typing import Any, Optional, TypedDict, Union
 
-from groq import Groq
+from langchain_core.callbacks import BaseCallbackHandler
+
 from langchain_classic.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import StructuredTool
 
 from .models import (
@@ -27,41 +28,11 @@ from .prompts import (
 from .retriever import VectorStore
 from .logger import logger
 
-_FLASH = "llama-3.3-70b-versatile"
-_PRO   = "llama-3.3-70b-versatile"
-
-_client: Groq | None = None
-
+_FLASH = "gemini-2.5-flash"
+_PRO   = "gemini-2.5-flash"
 _WEIGHT_SCALE = 10.0
 
-def _setup() -> None:
-    global _client
-    if _client is not None:
-        return
-
-    key = os.environ.get("GROQ_API_KEY", "")
-    if not key:
-        raise EnvironmentError(
-            "GROQ_API_KEY is not set.\n"
-            "Copy .env.example → .env and paste your key.\n"
-            "Get one at: https://console.groq.com/keys"
-        )
-    _client = Groq(api_key=key)
-
-def _call(model_name: str, system: str, user: str) -> str:
-    response = _client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content
-
 def _parse_json(text: str) -> dict:
-    # Strip markdown code fences if present
     cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip())
     cleaned = re.sub(r"\s*```$", "", cleaned)
     return json.loads(cleaned)
@@ -76,31 +47,21 @@ def _portfolio_context(portfolio: Portfolio) -> str:
     ]
     for h in portfolio.holdings:
         lines.append(
-            f"  {h.ticker:<18} {h.name:<35} {h.asset_type:<12} {h.sector:<25}"
-            f"  weight {h.weight_pct:>5.2f}%  value ₹{h.holding_value:>10,.0f}"
-            f"  P&L {h.pnl_pct:>+6.2f}%"
+            f"  {h.ticker:<12} {h.name:<30} {h.weight_pct:>5.2f}%  P&L {h.pnl_pct:>+6.2f}%"
         )
     return "\n".join(lines)
 
 def _history_context(history: list[dict]) -> str:
     if not history:
         return ""
-
-    lines = ["--- Previous questions this session ---"]
-    for item in history[-4:]:
-        lines.append(f"Q: {item['query']}")
-        lines.append(f"A: {item['summary']}")
-    lines.append("--- End of history ---")
+    lines = ["Recent Conversation History:"]
+    for turn in history[-2:]:
+        role = "User" if turn["role"] == "user" else "Assistant"
+        lines.append(f"  {role}: {turn['content']}")
     return "\n".join(lines)
 
 def _grounding_instruction() -> str:
-    return (
-        "\nIMPORTANT: Answer strictly using the context provided above. "
-        "Do not use any external knowledge or training data. "
-        "If the answer cannot be found in the provided context, respond with: "
-        "'I could not find that information in the available portfolio data.'"
-    )
-
+    return "\n\nAnswer strictly using the context provided. Do not use external knowledge or invent facts."
 
 def answer_allocation(
     query: str,
@@ -108,10 +69,19 @@ def answer_allocation(
     store: VectorStore,
     history: list[dict] | None = None,
 ) -> AllocationResponse:
-    chunks  = store.search(query, k=8)
-    context = "\n\n---\n".join(c["text"] for c in chunks)
+    chunks = store.search(query, top_k=5)
+    context = "\n\n".join([c["text"] for c in chunks])
     sources = list({c["metadata"].get("source", "unknown") for c in chunks})
     hist    = _history_context(history or [])
+
+    # Use LangChain structured output binding
+    llm = ChatGoogleGenerativeAI(
+        model=_FLASH, 
+        temperature=0.1, 
+        convert_system_message_to_human=True,
+        google_api_key=os.environ.get("GOOGLE_API_KEY")
+    )
+    structured_llm = llm.with_structured_output(AllocationResponse)
 
     system = ALLOCATION_SYSTEM + _grounding_instruction() + "\n\n" + _portfolio_context(portfolio)
     user   = (
@@ -119,22 +89,14 @@ def answer_allocation(
         + f"Context:\n{context}\n\nQuestion: {query}"
     )
 
-    raw  = _call(_FLASH, system, user)
-    data = _parse_json(raw)
-
-    required_keys = {"query", "answer", "holdings_referenced", "sources"}
-    missing = required_keys - data.keys()
-
-    if missing:
-        return AllocationResponse(
-            query=query,
-            answer=f"Response was missing required fields: {missing}. Raw: {raw[:200]}",
-            holdings_referenced=[],
-            sources=sources,
-        )
-
-    data["sources"] = list(set(data.get("sources", [])) | set(sources))
-    return AllocationResponse(**data)
+    result = structured_llm.invoke([
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ])
+    
+    # Merge retrieved sources
+    result.sources = list(set(result.sources) | set(sources))
+    return result
 
 def answer_metrics(
     query: str,
@@ -142,10 +104,18 @@ def answer_metrics(
     store: VectorStore,
     history: list[dict] | None = None,
 ) -> MetricsResponse:
-    chunks  = store.search(query, k=len(portfolio.holdings) + 5)
-    context = "\n\n---\n".join(c["text"] for c in chunks)
+    chunks = store.search(query, top_k=5)
+    context = "\n\n".join([c["text"] for c in chunks])
     sources = list({c["metadata"].get("source", "unknown") for c in chunks})
     hist    = _history_context(history or [])
+
+    llm = ChatGoogleGenerativeAI(
+        model=_FLASH, 
+        temperature=0.1, 
+        convert_system_message_to_human=True,
+        google_api_key=os.environ.get("GOOGLE_API_KEY")
+    )
+    structured_llm = llm.with_structured_output(MetricsResponse)
 
     system = METRICS_SYSTEM + _grounding_instruction() + "\n\n" + _portfolio_context(portfolio)
     user   = (
@@ -153,22 +123,13 @@ def answer_metrics(
         + f"Context:\n{context}\n\nQuestion: {query}"
     )
 
-    raw  = _call(_FLASH, system, user)
-    data = _parse_json(raw)
-
-    required_keys = {"query", "metrics", "answer", "sources"}
-    missing = required_keys - data.keys()
-
-    if missing:
-        return MetricsResponse(
-            query=query,
-            metrics={},
-            answer=f"Response was missing required fields: {missing}. Raw: {raw[:200]}",
-            sources=sources,
-        )
-
-    data["sources"] = list(set(data.get("sources", [])) | set(sources))
-    return MetricsResponse(**data)
+    result = structured_llm.invoke([
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ])
+    
+    result.sources = list(set(result.sources) | set(sources))
+    return result
 
 def answer_general_qa(
     query: str,
@@ -176,10 +137,18 @@ def answer_general_qa(
     store: VectorStore,
     history: list[dict] | None = None,
 ) -> GeneralQaResponse:
-    chunks  = store.search(query, k=8)
-    context = "\n\n---\n".join(c["text"] for c in chunks)
+    chunks = store.search(query, top_k=5)
+    context = "\n\n".join([c["text"] for c in chunks])
     sources = list({c["metadata"].get("source", "unknown") for c in chunks})
     hist    = _history_context(history or [])
+
+    llm = ChatGoogleGenerativeAI(
+        model=_FLASH, 
+        temperature=0.1, 
+        convert_system_message_to_human=True,
+        google_api_key=os.environ.get("GOOGLE_API_KEY")
+    )
+    structured_llm = llm.with_structured_output(GeneralQaResponse)
 
     system = GENERAL_QA_SYSTEM + _grounding_instruction() + "\n\n" + _portfolio_context(portfolio)
     user   = (
@@ -187,59 +156,39 @@ def answer_general_qa(
         + f"Context:\n{context}\n\nQuestion: {query}"
     )
 
-    raw  = _call(_FLASH, system, user)
-    data = _parse_json(raw)
+    result = structured_llm.invoke([
+        {"role": "system", "content": system},
+        {"role": "user", "content": user}
+    ])
+    
+    result.sources = list(set(result.sources) | set(sources))
+    return result
 
-    required_keys = {"query", "answer", "sources"}
-    missing = required_keys - data.keys()
+def _node1_retrieve_news(query: str, store: VectorStore, k: int = 4) -> list[dict]:
+    all_results = store.search(query, top_k=k * 2)
+    return [r for r in all_results if r["metadata"].get("type") == "news"][:k]
 
-    if missing:
-        return GeneralQaResponse(
-            query=query,
-            answer=f"Response was missing required fields: {missing}. Raw: {raw[:200]}",
-            sources=sources,
-        )
-
-    data["sources"] = list(set(data.get("sources", [])) | set(sources))
-    return GeneralQaResponse(**data)
-
-def _node1_retrieve_news(query: str, store: VectorStore, k: int = 8) -> list[dict]:
-    all_results = store.search(query, k=k * 3)
-    news_only   = [r for r in all_results if r["metadata"].get("type") == "news"]
-    return news_only[:k]
-
-def _node2_cross_reference(
+def _node2_tag_holdings(
     news_chunks: list[dict],
     portfolio: Portfolio,
 ) -> list[tuple[dict, list[str]]]:
-    # Build two lookup maps from portfolio holdings
-    short_to_full: dict[str, str] = {}
-    for h in portfolio.holdings:
-        # 'TCS.NS' → 'TCS',  'HDFCBANK.NS' → 'HDFCBANK'
-        short = h.ticker.split(".")[0]
-        short_to_full[short] = h.ticker
-
-    company_to_ticker: dict[str, str] = {
-        h.name.lower(): h.ticker for h in portfolio.holdings
-    }
-
-    tagged: list[tuple[dict, list[str]]] = []
-
+    company_to_ticker = {h.name: h.ticker for h in portfolio.holdings}
+    tagged = []
+    
     for chunk in news_chunks:
-        text_upper = chunk["text"].upper()
         text_lower = chunk["text"].lower()
-        matched: list[str] = []
-
-        for short_ticker, full_ticker in short_to_full.items():
-            if short_ticker in text_upper and full_ticker not in matched:
+        matched = []
+        for h in portfolio.holdings:
+            ticker_base = h.ticker.split('.')[0].lower()
+            full_ticker = h.ticker
+            if ticker_base in text_lower or full_ticker.lower() in text_lower:
                 matched.append(full_ticker)
 
         for company_name, full_ticker in company_to_ticker.items():
             if full_ticker in matched:
                 continue
             significant_words = [word for word in company_name.split() if len(word) > 4]
-            word_found = any(word in text_lower for word in significant_words)
-            if word_found:
+            if any(word in text_lower for word in significant_words):
                 matched.append(full_ticker)
 
         tagged.append((chunk, matched))
@@ -293,46 +242,26 @@ def _node4_format_cite(
         + f"Query: {query}\n\n"
         + f"Portfolio context:\n{json.dumps(ticker_info, indent=2)}\n\n"
         + f"Relevant news (ranked by portfolio exposure):\n{json.dumps(news_context, indent=2)}\n\n"
-        + "Return JSON with this exact structure:\n"
-        + "{\n"
-        + '  "query": "<original question>",\n'
-        + '  "impacts": [\n'
-        + "    {\n"
-        + '      "ticker": "<NSE ticker e.g. RELIANCE.NS>",\n'
-        + '      "company_name": "<full company name>",\n'
-        + '      "exposure_level": "HIGH | MEDIUM | LOW",\n'
-        + '      "portfolio_weight_pct": <float>,\n'
-        + '      "rationale": "<one sentence explanation>",\n'
-        + '      "sources": ["<filename e.g. news_05.md>"]\n'
-        + "    }\n"
-        + "  ],\n"
-        + '  "summary": "<detailed analytical explanation. Start with \'Based on the question, I have analyzed your portfolio holdings against the relevant news...\'. Reason over the specific portfolio weights and how the news affects them. Produce a clear, professional explanation of the potential impact.>"\n'
-        + "}\n\n"
-        + "Rules:\n"
-        + "- Analyze the question carefully.\n"
-        + "- Reason over both the portfolio weights and the news content.\n"
-        + "- Only include tickers that appear in the provided news chunks.\n"
-        + "- HIGH = direct material impact on the company's earnings or fundamentals.\n"
-        + "- MEDIUM = indirect sector-level or macroeconomic impact.\n"
-        + "- LOW = tangential or sentiment-only impact.\n"
-        + "- sources must list the exact filename from the news context above.\n"
+        + "Instructions:\n"
+        + "- Analyze the exposure of the portfolio to this news.\n"
+        + "- For each affected ticker, provide a rationale and exposure level (HIGH/MEDIUM/LOW).\n"
+        + "- Keep the final summary concise (max 100 words).\n"
         + "- Do not invent tickers or news not present in the provided context."
     )
 
-    raw  = _call(_PRO, NEWS_IMPACT_SYSTEM + _grounding_instruction(), user)
-    data = _parse_json(raw)
+    llm = ChatGoogleGenerativeAI(
+        model=_PRO, 
+        temperature=0.1, 
+        convert_system_message_to_human=True,
+        google_api_key=os.environ.get("GOOGLE_API_KEY")
+    )
+    structured_llm = llm.with_structured_output(NewsImpactResponse)
 
-    required_keys = {"query", "impacts", "summary"}
-    missing = required_keys - data.keys()
-
-    if missing:
-        return NewsImpactResponse(
-            query=query,
-            impacts=[],
-            summary=f"Node 4 response was missing required fields: {missing}. Raw: {raw[:200]}",
-        )
-
-    return NewsImpactResponse(**data)
+    result = structured_llm.invoke([
+        {"role": "system", "content": NEWS_IMPACT_SYSTEM + _grounding_instruction()},
+        {"role": "user", "content": user}
+    ])
+    return result
 
 def run_news_impact_agent(
     query: str,
@@ -340,11 +269,13 @@ def run_news_impact_agent(
     store: VectorStore,
     history: list[dict] | None = None,
 ) -> NewsImpactResponse:
-    news_chunks = _node1_retrieve_news(query, store)
-    tagged      = _node2_cross_reference(news_chunks, portfolio)
-    ranked      = _node3_rank_by_exposure(tagged, portfolio)
-    result      = _node4_format_cite(query, ranked, portfolio, history)
-    return result
+    news = _node1_retrieve_news(query, store)
+    if not news:
+        return NewsImpactResponse(query=query, impacts=[], summary="No relevant news found.")
+    
+    tagged = _node2_tag_holdings(news, portfolio)
+    ranked = _node3_rank_by_exposure(tagged, portfolio)
+    return _node4_format_cite(query, ranked, portfolio, history)
 
 
 
@@ -357,7 +288,6 @@ class QueryRouter:
             self.portfolio = Portfolio(**portfolio_data)
 
         self.store = store
-        _setup()
         
         def allocation_func(query: str) -> str:
             logger.info(f"Tool Call: allocation_tool | Query: {query}")
@@ -405,9 +335,17 @@ class QueryRouter:
                 description="Answers how recent news affects the portfolio holdings and computes exposure."
             )
         ]
-        
-        # Initialize Groq Model via LangChain
-        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.1)
+
+
+        if not os.environ.get("GOOGLE_API_KEY"):
+             raise EnvironmentError("GOOGLE_API_KEY is not set.")
+
+        llm = ChatGoogleGenerativeAI(
+            model=_FLASH, 
+            temperature=0.1, 
+            convert_system_message_to_human=True,
+            google_api_key=os.environ.get("GOOGLE_API_KEY")
+        )
 
         template = '''Answer the following questions as best you can. You have access to the following tools:
 
@@ -453,13 +391,16 @@ Thought:{agent_scratchpad}'''
         self,
         query: str,
         history: list[dict] | None = None,
+        callbacks: list[BaseCallbackHandler] | None = None,
     ) -> Union[AllocationResponse, MetricsResponse, NewsImpactResponse, GeneralQaResponse]:
         logger.info(f"User Query: {query}")
         self.current_history = history
+        
+        config = {"callbacks": callbacks} if callbacks else {}
 
         used_tools = []
         try:
-            response = self.agent_executor.invoke({"input": query})
+            response = self.agent_executor.invoke({"input": query}, config=config)
             final_answer = response.get("output", str(response))
             intermediate_steps = response.get("intermediate_steps", [])
 

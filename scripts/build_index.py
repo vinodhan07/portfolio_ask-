@@ -52,7 +52,6 @@ def build(data_dir: Path, force: bool = False) -> None:
 
     loaders = [
         ("portfolio.json",           _chunk_portfolio,  data_dir / "portfolio.json"),
-        ("portfolio_augmented.json", _chunk_augmented,  data_dir / "portfolio_augmented.json"),
         ("glossary.md",              _chunk_glossary,   data_dir / "glossary.md"),
         ("news/*.md",                _chunk_news,       data_dir / "news"),
     ]

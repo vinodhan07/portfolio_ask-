@@ -53,30 +53,35 @@ class VectorStore:
     def add_documents(self, texts: list[str], metadata: Optional[list[dict]] = None) -> None:
         if not texts:
             return
-        embeddings = self.model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1, norms)
-        embeddings = (embeddings / norms).astype(np.float32)
+        # Generate embeddings (Bi-Encoder approach)
+        embeddings = self.model.encode(texts).astype("float32")
+
         if self.index is None:
-            self.index = faiss.IndexFlatIP(embeddings.shape[1])
+            # Use IndexFlatL2 for simplicity (Euclidean distance)
+            dim = embeddings.shape[1]
+            self.index = faiss.IndexFlatL2(dim)
+
         self.index.add(embeddings)
         self.documents.extend(texts)
         self.metadata.extend(metadata or [{} for _ in texts])
 
-    def search(self, query: str, k: int = 5) -> list[dict]:
-        if self.index is None or self.index.ntotal == 0:
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
+        if not self.index:
             return []
-        q_emb = self.model.encode([query], convert_to_numpy=True).astype(np.float32)
-        q_norm = np.linalg.norm(q_emb)
-        if q_norm > 0:
-            q_emb = q_emb / q_norm
-        k = min(k, self.index.ntotal)
-        scores, indices = self.index.search(q_emb, k)
-        return [
-            {"text": self.documents[i], "metadata": self.metadata[i], "score": float(s)}
-            for s, i in zip(scores[0], indices[0])
-            if i >= 0
-        ]
+
+        # Encode query and search the vector index
+        query_vector = self.model.encode([query]).astype("float32")
+        distances, indices = self.index.search(query_vector, top_k)
+
+        results = []
+        for dist, idx in zip(distances[0], indices[0]):
+            if idx != -1:
+                results.append({
+                    "text": self.documents[idx],
+                    "metadata": self.metadata[idx],
+                    "score": float(dist)
+                })
+        return results
 
     def save(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
