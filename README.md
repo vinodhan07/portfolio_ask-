@@ -4,7 +4,7 @@
 [![LLM](https://img.shields.io/badge/LLM-Gemini_2.0_Flash-purple.svg)](https://ai.google.dev/)
 [![VectorDB](https://img.shields.io/badge/VectorDB-FAISS-green.svg)](https://github.com/facebookresearch/faiss)
 
-**PORT AGENT** is an enterprise-grade AI financial analyst designed for Indian equity portfolios. It leverages **Google Gemini 2.0 Flash** and a high-performance **RAG (Retrieval-Augmented Generation)** pipeline to provide grounded, traceable insights into market news, sector exposure, and portfolio performance.
+**PORT AGENT** is an AI financial analyst designed for Indian equity portfolios. It leverages **Google Gemini 2.0 Flash** and a high-performance **RAG (Retrieval-Augmented Generation)** pipeline to provide grounded, traceable insights into market news, sector exposure, and portfolio performance.
 
 ---
 
