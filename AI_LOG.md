@@ -5,37 +5,38 @@
 
 ## Significant prompts
 
-1. **Prompt:** "Hey, let's switch from this complex reranking logic to a clean Bi-Encoder (`all-MiniLM-L6-v2`) with a basic FAISS flat index. Keep it at an 'intermediate level'."
-   - **What AI produced:** It completely refactored the retrieval code to use FAISS and HuggingFace embeddings instead of the heavy reranker it originally wanted.
-   - **What you kept / what you rejected and WHY:** I ditched the AI's first idea (the complex reranker) because it was overkill. I kept the FAISS setup since it's way faster, super reliable, and honestly, a lot easier for me to explain in a technical interview.
+1. **Prompt:** "The current reranking setup feels too complicated. Let’s simplify it by using a Bi-Encoder (`all-MiniLM-L6-v2`) with a basic FAISS flat index. Keep the implementation at an intermediate level."
+   - **What AI produced:** It refactored the retrieval system to use FAISS with HuggingFace embeddings instead of the heavy reranker approach.
+   - **What you kept / what you rejected and WHY:** I rejected the reranker idea because it added unnecessary complexity. I kept the FAISS setup since it is faster, easier to manage, and much simpler to explain.
 
-2. **Prompt:** "Drop the big ASCII art header, it looks a bit too hacker-ish. Give me a cleaner, single-line professional banner that looks more like Gemini."
-   - **What AI produced:** It swapped the chunky text for a slick, single-line header using the Rich library in Python.
-   - **What you kept / what you rejected and WHY:** I kept the new minimal header and threw out the old ASCII art. It just makes the whole CLI tool feel much more like an enterprise product.
+2. **Prompt:** "The ASCII art header looks a bit too flashy. Replace it with a clean, single-line professional banner, something minimal like Gemini."
+   - **What AI produced:** It replaced the ASCII art with a simple, clean header using the Rich library.
+   - **What you kept / what you rejected and WHY:** I kept the minimal header and removed the ASCII art. The cleaner look makes the tool feel more professional.
 
-3. **Prompt:** "You need to follow strict 'Grounding' rules. No guessing, no hallucinations at all. If you can't find the answer in the data, just say 'Insufficient data to answer.'"
-   - **What AI produced:** It updated the core system prompts and tweaked the agent's instructions to strictly check its sources before answering.
-   - **What you kept / what you rejected and WHY:** I kept these strict grounding rules. I needed to be absolutely sure it wouldn't make things up, and this guarantees it always backs up its answers with actual citations.
+3. **Prompt:** "Make sure the system strictly follows grounding rules. It should not guess or hallucinate. If the answer isn’t found in the data, it should clearly say 'Insufficient data to answer.'"
+   - **What AI produced:** It updated the prompts and agent logic to enforce strict grounding and source validation.
+   - **What you kept / what you rejected and WHY:** I kept these rules because reliability was critical. This ensures the system only gives answers backed by actual data.
 
-4. **Prompt:** "I want a shutdown sequence that feels like a real system powering down. Don't just quit the script—terminate the processes, clear the memory, and disconnect gracefully."
-   - **What AI produced:** It wrote a neat little exit sequence that simulates cleanup steps, logs them out, and says goodbye before closing.
-   - **What you kept / what you rejected and WHY:** I kept it! It’s a tiny detail, but compared to a boring `sys.exit()`, it makes the app feel incredibly polished.
+4. **Prompt:** "Instead of a basic exit, create a proper shutdown sequence. It should simulate a real system by cleaning up processes, clearing memory, and exiting gracefully."
+   - **What AI produced:** It added a shutdown flow that simulates cleanup steps and logs messages before exiting.
+   - **What you kept / what you rejected and WHY:** I kept this because it adds a polished feel to the application and improves the user experience.
 
 ## A bug your AI introduced
-The AI really struggled with context mapping at first. For example, it couldn't figure out how to link general market news to my specific stocks, like TCS or HDFCBANK. I caught this while running some test questions about those specific companies and noticed the agent was completely ignoring the news files I had provided. I had to step in and fix the context pipeline myself so the news data would properly map to the right assets in my portfolio.
+The AI initially had issues with context mapping. It could not correctly connect general market news to specific stocks like TCS or HDFCBANK. While testing, I noticed it was ignoring relevant news data. I fixed this by improving the context pipeline so the news data maps correctly to portfolio assets.
 
 ## A design choice you made against AI suggestion
-At one point, the AI wanted to build this massive, highly complex document retrieval system with an advanced reranker. I straight-up told it no. I forced it to go back to a much simpler FAISS flat index with a Bi-Encoder. I made this choice because I wanted the architecture to be "intermediate level." If I over-engineered it, I'd have a hard time explaining the underlying mechanics to anyone else. Simple was definitely better here.
+The AI suggested building a complex retrieval system with an advanced reranker. I chose not to follow that approach and instead used a simpler FAISS flat index with a Bi-Encoder. This made the system easier to understand and explain, while still being effective.
 
 ## Time split
+
 *(Based on a total project time of 12 hours)*
 
-- **10% (1.2 hrs)** - Brainstorming, prompting, and arguing with the AI over features
-- **20% (2.4 hrs)** - Reading through the AI's code and making architecture decisions
-- **20% (2.4 hrs)** - Actually writing and fixing code myself (like manually formatting the `portfolio.json` file)
-- **15% (1.8 hrs)** - Debugging those annoying context mapping and retriever issues
-- **10% (1.2 hrs)** - Throwing test questions at the agent to make sure it wasn't hallucinating
-- **5% (0.6 hrs)** - Skimming LangChain and FAISS documentation when the AI got stuck
-- **20% (2.4 hrs)** - General planning, setup, and running the project
+- **10% (1.2 hrs)** - Brainstorming ideas, writing prompts, and refining requirements with the AI  
+- **20% (2.4 hrs)** - Reviewing AI-generated code and making architecture decisions  
+- **20% (2.4 hrs)** - Writing and fixing parts of the code manually (e.g., formatting `portfolio.json`)  
+- **15% (1.8 hrs)** - Debugging issues like context mapping and retrieval errors  
+- **10% (1.2 hrs)** - Testing the agent with different queries to ensure accuracy  
+- **5% (0.6 hrs)** - Referring to LangChain and FAISS documentation when needed  
+- **20% (2.4 hrs)** - Overall setup, planning, and running the project  
 
-**Total Time Spent on AI (Prompting, Reviewing & Testing):** ~4.8 hours (about 40% of my total time).
+**Total Time Spent on AI (Prompting, Reviewing & Testing):** ~4.8 hours (about 40% of total time).
