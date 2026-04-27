@@ -139,7 +139,6 @@ python -m portfolio_ask
 
 ## 📖 Documentation
 *   [AI_LOG.md](./AI_LOG.md): The human story of how this agent was built and negotiated.
-*   [docs/architecture.png](./docs/architecture.png): High-fidelity system design visualization.
 *   [docs/flow_diagram.md](./docs/flow_diagram.md): Granular step-by-step logic flow of the agent nodes.
 
 ---
