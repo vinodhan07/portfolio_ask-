@@ -94,7 +94,7 @@ def _print_banner(portfolio: Portfolio, store: VectorStore) -> None:
         f"What is my current allocation to the {random.choice(sectors)} sector?",
         f"Compare the performance of {random.choice(holdings)} and {random.choice(holdings)}.",
         f"What is the total unrealized P&L for my {random.choice(sectors)} assets?",
-        f"Give me a summary of the latest news for {random.choice(holdings)}."
+        "What are the results of the latest project test case analysis?"
     ]
     suggested_queries = random.sample(pool, 3)
 

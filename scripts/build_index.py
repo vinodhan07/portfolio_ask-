@@ -36,7 +36,7 @@ def build(data_dir: Path, force: bool = False) -> None:
         )
         return
 
-    console.print(f"\n  [bold]Building FAISS index[/bold]  →  {_STORE_DIR}/\n")
+    console.print(f"\n  [bold]Building FAISS index[/bold]  ->  {_STORE_DIR}/\n")
     t0 = time.perf_counter()
 
     loaders = [
@@ -55,7 +55,7 @@ def build(data_dir: Path, force: bool = False) -> None:
         texts, meta = loader(path)
         if texts:
             store.add_documents(texts, meta)
-        status = f"[green]✓[/green]  {len(texts)} chunks" if texts else "[dim]0 chunks[/dim]"
+        status = f"[green]PASS[/green]  {len(texts)} chunks" if texts else "[dim]0 chunks[/dim]"
         stats.append((label, len(texts), status))
 
     store.save(_STORE_DIR)
@@ -71,7 +71,7 @@ def build(data_dir: Path, force: bool = False) -> None:
     t.add_row("[bold]TOTAL[/bold]", f"[bold]{store.total_docs}[/bold]", "[bold green]saved[/bold green]")
     console.print(t)
     console.print(
-        f"  [green]✓[/green] Index saved to [bold]{_STORE_DIR}/[/bold]  "
+        f"  [green]OK[/green] Index saved to [bold]{_STORE_DIR}/[/bold]  "
         f"·  {store.total_docs} docs  ·  {elapsed:.1f}s\n"
     )
 

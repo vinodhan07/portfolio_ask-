@@ -1,4 +1,3 @@
-"""Eval harness: python evals/run_eval.py"""
 from __future__ import annotations
 
 import json
